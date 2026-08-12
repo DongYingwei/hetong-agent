@@ -4,7 +4,17 @@
 
 **Blocked by:** T05(schema skill 就位后 Agent 才能生成正确 SQL)
 
-**Status:** ready-for-agent · **HITL**（构建 AFK；部署需 G1 只读连接串）
+**Status:** 🟢 构建完成（AFK 部分全绿）· **HITL**（端到端 eval 待 G1 只读连接串）
+
+> ✅ **构建完成（2026-08-12）**：
+> - **开源选型**（等用户确认）：`node-sql-parser`（AST 真解析，PG 方言）+ `pg`（只读连接池）。评测确认放行多表 JOIN 单条 SELECT、多语句返数组可拒、写操作 type≠select 可拒、注释注入被剥离失效。
+> - `src/assertReadOnly.ts`（新）：AST 单条 SELECT 判定，抛 `NotReadOnlyError`。**18 单测全绿**（INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE/CREATE/GRANT + 多语句 + 注入 + 空/乱码 逐条拒；JOIN/聚合/EXISTS/NOT EXISTS SELECT 放行）。
+> - `src/sql_query.ts`（重写）：入参改 `{sql}`；三道防线①assertReadOnly ②capRows LIMIT 500 + statement_timeout 8s ③PG_READONLY_URL 只读角色；DB 报错原文回灌供自纠错；保留 `contract_ids` 联动入参。
+> - `coremind.yaml` systemPrompt 重写：删旧映射表/tag_5g/industry/aggregate；改为依 T05 数据字典自行推理、模块 JOIN 明细表、金额分口径、语义时间物化列、长文本走 RAG、自纠错≤2、空结果不放宽、「查看 SQL」折叠输出。
+> - TS 工程脚手架：`package.json`/`tsconfig.json`/vitest；`npx tsc --noEmit` 通过。
+> - 同步 `CONTEXT.md` 模块术语（T05 已改）。
+>
+> ⏳ **待 G1（只读连接串）**：端到端 `coremind eval` 结构化子集（模块提问→JOIN SELECT→表格+折叠 SQL、混口径分组、自纠错重试、空结果提示）需真只读库方可跑。assertReadOnly 已纯单测覆盖，不依赖库。
 
 > ⚠️ **ADR-0004 影响**：模块过滤是 **JOIN `contract_module_hits`**（如「服务内容含AI」= `JOIN contract_module_hits h ON h.contract_id=c.id WHERE h.module_key='service' AND h.hit=1`）。故 `assertReadOnly` 必须**允许多表 JOIN 的单条 SELECT**，只拒写操作/多语句(`;`)/注释注入——不能因"多表"误杀。
 >

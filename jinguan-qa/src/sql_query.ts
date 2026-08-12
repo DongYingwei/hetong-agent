@@ -1,115 +1,124 @@
 /**
- * sql_query —— 只读结构化查询工具。
+ * sql_query —— 只读结构化查询工具（Text-to-SQL，ADR-0001）。
  *
- * 职责：接收 Agent 生成的“查询意图”，对合同库执行 SELECT，返回行数据。
- * 返回值会被 CoreMind 包成 text 回灌到模型上下文（见 public-tool.ts），
- * Agent 读到后整理成 Markdown 表格。
+ * 入参 = 模型生成的【裸 SELECT】（不是结构化过滤条件）。表结构/口径由注入的
+ * jinguan-schema skill 声明，Agent 依列语义自行推理生成 SQL（ADR-0002）。
  *
- * ⚠️ 安全（你必须实现，CoreMind 不解析 SQL）：
- *   1. 只允许 SELECT —— 见 assertReadOnly()。
- *   2. 数据库连接务必用【只读账号】，这是最后一道兜底。
- *   3. 参数化查询，不要把用户文本直接拼进 SQL。
+ * 三道只读防线（坑3）：
+ *   ① assertReadOnly：AST 真解析，仅单条 SELECT，拒写/多语句/注释注入。
+ *   ② LIMIT + 语句超时：结果行数封顶 + statement_timeout，防跑飞。
+ *   ③ PG 只读角色：连接串用只读账号（部署前置 G1），最后一道兜底。
  *
- * 设计选择：本工具接收【结构化过滤条件】而非裸 SQL 字符串，
- * 这样注入面更小、也更好评测。若你更信任模型直接写 SQL，可把
- * parameters 改成 { sql: string } 并在 assertReadOnly 里严格校验。
+ * 金额/时间口径不在本工具强制，而由 schema skill + systemPrompt 引导模型写对
+ * （SUM 带 IS NOT NULL、混口径分组、tax_rate 不算数、物化时间列语义）。
+ * 自纠错（报错重写≤2、空结果只提示）由 CoreMind ReAct + systemPrompt 驱动：
+ * 本工具把 DB 报错原文如实回灌，供模型据错改写重试。
  */
 
-// contract_ids 设为可选；当 Agent 走“先向量后 SQL”联动时才传入。
-// 若你希望联动路径下强制串行，可在向量场景用一个单独工具或把它设 required。
+import pg from "pg";
+import { assertReadOnly, NotReadOnlyError } from "./assertReadOnly.js";
+
+const ROW_LIMIT = 500; // 防线②：单次结果行数封顶
+const STATEMENT_TIMEOUT_MS = 8000; // 防线②：单条语句超时
+
 interface SqlQueryParams {
-  /** 统计动作：数量 / 求和 / 列表 */
-  aggregate: "count" | "sum_amount" | "list";
-  /** 结构化过滤条件（都对应已物化的离散列） */
-  filters?: {
-    sign_year?: number;
-    sign_quarter?: number[]; // 例：[1,2] 表示前两季度
-    sign_half?: 1 | 2;
-    industry?: string; // 电力 / 通信 ...
-    contract_type?: string; // 运维 / 建设 / 采购 / 服务 ...
-    tag_ai?: 0 | 1;
-    tag_5g?: 0 | 1;
-  };
-  /** 联动路径：由 vector_search 返回的合同 id 列表，用于二次统计 */
+  /** 模型生成的单条只读 SELECT（可含多表 JOIN，如 JOIN contract_module_hits）。 */
+  sql: string;
+  /**
+   * 联动路径（T07）：由 vector_search 返回的合同 id 列表。传入时把结果限定在这些 id。
+   * 本工具不改写模型 SQL 的语义，仅在最外层附加 id 约束（见 execute）。
+   */
   contract_ids?: number[];
 }
 
-interface ContractRow {
-  contract_no: string;
-  contract_name: string;
-  amount: number;
+// 只读连接池（惰性建，复用）。连接串走只读账号（G1）。
+let pool: pg.Pool | null = null;
+function getPool(): pg.Pool {
+  if (pool) return pool;
+  const conn = process.env.PG_READONLY_URL;
+  if (!conn) {
+    throw new Error(
+      "缺少只读数据库连接串（环境变量 PG_READONLY_URL 未设置）。这是三道只读防线的第③道（G1），部署前必须配置只读角色连接串。",
+    );
+  }
+  pool = new pg.Pool({ connectionString: conn, max: 4 });
+  return pool;
 }
 
-interface SqlResult {
-  aggregate: SqlQueryParams["aggregate"];
-  count?: number;
-  total_amount?: number;
-  rows?: ContractRow[];
-}
-
-/** 只读把关：任何非 SELECT 语义一律拒绝。若改成裸 SQL 入参，这里做真正的语句解析。 */
-function assertReadOnly(_params: SqlQueryParams): void {
-  // 当前采用结构化入参，天然不含写操作，无需解析。
-  // 若切换到 { sql } 入参，请在此处：
-  //   const forbidden = /\b(insert|update|delete|drop|alter|truncate|create|grant)\b/i;
-  //   if (forbidden.test(sql)) throw new Error("仅允许 SELECT 查询");
+/** 防线②：把已确认只读的 SELECT 外包一层 LIMIT，行数封顶且不改内层语义。 */
+function capRows(readonlySql: string): string {
+  return `SELECT * FROM (${readonlySql}) AS _capped LIMIT ${ROW_LIMIT}`;
 }
 
 export default {
   name: "sql_query",
   description:
-    "对合同结构化库执行只读统计查询。支持按年份/季度/半年/行业/合同类型/AI标签/5G标签过滤，" +
-    "可做数量统计、金额求和或列出编号名称。也可传入 contract_ids 对指定合同集合二次统计。",
+    "对合同结构化库执行【只读 SELECT】。你直接生成单条 PostgreSQL SELECT 语句传入 sql 参数" +
+    "（可含多表 JOIN，模块过滤须 JOIN contract_module_hits）。严格依据 jinguan-schema 数据字典的列语义，" +
+    "不得臆造列名。金额求和须带 amount IS NOT NULL；混口径按 amount_type 分组求和。" +
+    "可选 contract_ids：把结果限定在指定合同集合（向量→SQL 联动时用）。",
   parameters: {
     type: "object",
     properties: {
-      aggregate: {
+      sql: {
         type: "string",
-        enum: ["count", "sum_amount", "list"],
-        description: "count=数量, sum_amount=金额求和, list=列出编号与名称",
+        description:
+          "单条 PostgreSQL 只读 SELECT 语句。禁止 INSERT/UPDATE/DELETE/DROP 等写操作与多语句。",
       },
-      filters: {
-        type: "object",
-        properties: {
-          sign_year: { type: "number" },
-          sign_quarter: { type: "array", items: { type: "number" } },
-          sign_half: { type: "number", enum: [1, 2] },
-          industry: { type: "string" },
-          contract_type: { type: "string" },
-          tag_ai: { type: "number", enum: [0, 1] },
-          tag_5g: { type: "number", enum: [0, 1] },
-        },
-        additionalProperties: false,
+      contract_ids: {
+        type: "array",
+        items: { type: "number" },
+        description: "可选：向量检索返回的合同 id 列表，用于二次统计。",
       },
-      contract_ids: { type: "array", items: { type: "number" } },
     },
-    required: ["aggregate"],
+    required: ["sql"],
     additionalProperties: false,
   },
   execute: async (_toolCallId: string, params: SqlQueryParams) => {
-    assertReadOnly(params);
+    // 防线①：AST 真解析，仅单条 SELECT。
+    let readonlySql: string;
+    try {
+      readonlySql = assertReadOnly(params.sql);
+    } catch (e) {
+      if (e instanceof NotReadOnlyError) {
+        return {
+          content: [{ type: "text", text: `SQL 被只读防线拒绝：${e.message}` }],
+          details: { error: "not_read_only", message: e.message },
+        };
+      }
+      throw e;
+    }
 
-    // ───────────────────────────────────────────────────────
-    // TODO(你实现)：把 params 翻译成【参数化】SELECT 并对只读库执行。
-    // 建议用一个 query builder 逐字段 append WHERE，杜绝字符串拼接。
-    //
-    // 示例形态（伪代码，替换成你的 DB 客户端）：
-    //   const { where, values } = buildWhere(params.filters, params.contract_ids);
-    //   if (params.aggregate === "count")      → SELECT COUNT(*)                    ...
-    //   if (params.aggregate === "sum_amount") → SELECT COUNT(*), SUM(amount)       ...
-    //   if (params.aggregate === "list")       → SELECT contract_no, contract_name  ...
-    // ───────────────────────────────────────────────────────
-    const result: SqlResult = {
-      aggregate: params.aggregate,
-      // count: ...,
-      // total_amount: ...,
-      // rows: [...],
-    };
+    // 联动路径：把结果限定在 vector_search 给的 id 集合（外层约束，不动内层语义）。
+    let effectiveSql = readonlySql;
+    const params_values: unknown[] = [];
+    if (params.contract_ids && params.contract_ids.length > 0) {
+      // 内层 SELECT 须暴露 contract_id/id 才能过滤；这里在外层按 id 过滤子查询结果。
+      effectiveSql = `SELECT * FROM (${readonlySql}) AS _sub WHERE _sub.id = ANY($1)`;
+      params_values.push(params.contract_ids);
+    }
 
-    // 返回 JSON 文本 → 回灌上下文供 Agent 汇总
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-      details: result,
-    };
+    const finalSql = capRows(effectiveSql); // 防线②：行数封顶
+
+    const client = await getPool().connect();
+    try {
+      // 防线②：语句超时（会话级，仅本连接）。
+      await client.query(`SET statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
+      const res = await client.query(finalSql, params_values);
+      const result = { rows: res.rows, rowCount: res.rowCount ?? res.rows.length };
+      return {
+        content: [{ type: "text", text: JSON.stringify(result) }],
+        details: result,
+      };
+    } catch (e) {
+      // DB 报错原文如实回灌 → 供 Agent 据错重读 schema、改写重试（≤2，systemPrompt 驱动）。
+      const message = (e as Error).message;
+      return {
+        content: [{ type: "text", text: `数据库执行出错：${message}` }],
+        details: { error: "db_error", message },
+      };
+    } finally {
+      client.release();
+    }
   },
 };
