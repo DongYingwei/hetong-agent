@@ -20,6 +20,7 @@
 | **T04-切片3** 片段同步 | ✅ | `sync.py/vector.py/api.py` + DDL `002` | fake 向量+真 PG 6/6 绿 |
 | **T05** schema skill 重写 | ✅ | `jinguan-qa/skills/jinguan-schema/README.md` | 24 列对齐 DDL·JOIN 明细表·grep 校验通过 |
 | **T06** sql_query 裸 SQL + assertReadOnly | 🟢 构建完成 | `jinguan-qa/src/{sql_query,assertReadOnly}.ts` + `coremind.yaml` | 18 vitest 绿·tsc 通过·端到端 eval 待 G1 |
+| **T07** vector_search 两阶段+双形态 | ✅ | `jinguan-qa/src/{vector_search,vectorClients}.ts` | 28 vitest 绿（含真 embed+Milvus+rerank 集成） |
 
 **全套 40 测试全绿**（`cd jinguan-parse && python3 -m pytest tests/`）。
 
@@ -37,7 +38,7 @@
   - MinerU `http://192.168.121.33:8000` `/file_parse`，**默认 backend=pipeline**（自包含无幻觉，已验证）。vlm-http-client(PaddleOCR-VL `:18080`)暂搁置——用户服务器上该路径当前返空 md，仅当 pipeline 解析不了时启用。
   - LLM DeepSeek 官方云，模型 `deepseek-v4-pro`，**thinking 模式 → instructor 用 `Mode.JSON`**（否则 400）。
   - embedding `.33:8008` Qwen3-Embedding-4B（vLLM OpenAI 兼容，**2560 维**）；reranker `.33:8012`（T07 用）；Milvus 本地 `localhost:19530`(v2.4.5)。
-- **开源优先流程**（用户硬性要求）：开发涉及新工具/库前先评测 GitHub/npm 并等用户确认，有开源不自研。已选：openai+instructor(抽取)、pyahocorasick(关键词)、psycopg3(PG)、fastapi(HTTP)、pymilvus(Milvus)；**查询侧 TS：node-sql-parser(assertReadOnly AST 解析)+pg(只读连接池)+vitest**。切分保留手写（合同结构专用）。**LlamaIndex 评估结论=建向量不用，留 T07/T08 候选**。
+- **开源优先流程**（用户硬性要求）：开发涉及新工具/库前先评测 GitHub/npm 并等用户确认，有开源不自研。已选：openai+instructor(抽取)、pyahocorasick(关键词)、psycopg3(PG)、fastapi(HTTP)、pymilvus(Milvus)；**查询侧 TS：node-sql-parser(assertReadOnly AST 解析)+pg(只读连接池)+@zilliz/milvus2-sdk-node+openai(embedding)+vitest**。切分保留手写（合同结构专用）。**LlamaIndex 评估结论=T07 也不用**（TS 版不成熟，collection 已自建）。**LlamaIndex 评估结论=建向量不用，留 T07/T08 候选**。
 - **切片逻辑**：tracer-bullet 纵向切片——每片切一条贯穿数据/后端/逻辑/测试的窄完整路径、独立可验证；先做不卡外部条件的，卡 G2/G5 的单独切出等条件。
 
 ### 项目结构（本阶段建立）
@@ -58,9 +59,9 @@ jinguan-qa/            ← 查询侧 TS（未动，T05+ 才碰）
 
 ### 下一步选项
 
-1. 转 T07（vector_search 两阶段：召回 50→rerank 8→双形态 ids/片段，需 G2 端点）
+1. 转 T08（RAG 路由：systemPrompt 完整版 + 三路径引导 + 带出处生成；集成 T06+T07 输出契约）
 2. 转 T10（Koa 网关适配 PG + CoreMind 代理，独立支线）
-3. 提供 **G1 只读连接串** → 跑 T06 端到端 eval（结构化子集）验真实 SQL 生成
+3. 提供 **G1 只读连接串** → 跑 T06/T08 端到端 eval（结构化+语义子集）验真实链路
 4. 已提交至内网 GitLab `origin`（http://221.178.153.117:62000/weidongying/jingxiaoguan.git）；后续成果按需增量 commit
 
 ⚠️ **GitHub Issues 仍未发**（无 gh/token + 待用户授权）。所有工单仍是 `.scratch/jinguan-retrieval/issues/01–11-*.md` 本地 markdown（T01/02/03/04 已在其中标进度）。

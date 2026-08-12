@@ -1,84 +1,142 @@
 /**
- * vector_search —— 只读语义检索工具。
+ * vector_search —— 只读语义检索工具（两阶段 + 双形态，ADR-0003 / 坑4）。
  *
- * 职责：当提问无法用已知标签命中、需要语义模糊匹配时（如“找和智能巡检类似的合同”），
- * 用查询文本在向量库做相似度检索 + metadata 过滤，返回命中的 contract_ids。
+ * 两阶段：query → embed(2560维) → Milvus 召回 top_k=50（+可选标量过滤，混合检索）
+ *         → reranker 精排 top_n≤8。
  *
- * 联动契约：本工具【只返回 id 列表】，不做统计。Agent 拿到 contract_ids 后，
- * 再调用 sql_query 传入这些 id 做求和/计数。这样职责单一、便于评测。
+ * 双形态（单工具，不拆二，坑4）——由 `mode` 决定输出：
+ *   · mode="fragments"（默认，RAG）：返回精排后的片段原文 + 四字段 metadata，供 T08 带出处生成。
+ *   · mode="ids"（语义路由）：返回去重 contract_ids，供 sql_query 联动二次统计（兼容 S1）。
  *
- * ⚠️ effect 声明为 read：向量库连接细节封在工具内部（endpoint/key 从 env 读），
- * 对 CoreMind 只暴露只读语义。
+ * 端点/客户端封在 vectorClients（env 读），依赖注入 → 单测用 fake，不打真服务。
  */
 
+import {
+  Embedder, Recaller, Reranker, RecallFilter, Fragment,
+  QwenEmbedder, MilvusRecaller, QwenReranker,
+} from "./vectorClients.js";
+
+const DEFAULT_TOP_K = 50; // 召回
+const DEFAULT_TOP_N = 8;  // 精排
+
+export interface TwoStageDeps {
+  embedder: Embedder;
+  recaller: Recaller;
+  reranker: Reranker;
+}
+
+/** 两阶段检索核心：召回 top_k → 精排 top_n。返回带 score 的片段（降序）。 */
+export async function twoStageSearch(
+  query: string,
+  deps: TwoStageDeps,
+  opts: { topK?: number; topN?: number; filter?: RecallFilter } = {},
+): Promise<Fragment[]> {
+  const topK = opts.topK ?? DEFAULT_TOP_K;
+  const topN = opts.topN ?? DEFAULT_TOP_N;
+
+  const vector = await deps.embedder.embed(query);
+  const recalled = await deps.recaller.recall(vector, topK, opts.filter);
+  if (recalled.length === 0) return [];
+
+  const ranked = await deps.reranker.rerank(query, recalled.map((f) => f.content), topN);
+  // 按 rerank 结果重排，附分数，截断 top_n。
+  return ranked
+    .slice(0, topN)
+    .map(({ index, score }) => ({ ...recalled[index], score }))
+    .filter((f) => f.contract_id !== undefined);
+}
+
+/** 片段列表 → 去重 contract_ids（保序：按精排相关性先后）。 */
+export function toContractIds(fragments: Fragment[]): number[] {
+  const seen = new Set<number>();
+  const ids: number[] = [];
+  for (const f of fragments) {
+    if (!seen.has(f.contract_id)) {
+      seen.add(f.contract_id);
+      ids.push(f.contract_id);
+    }
+  }
+  return ids;
+}
+
 interface VectorSearchParams {
-  /** 语义查询文本，例：智能巡检 / 类似运维服务 */
+  /** 语义查询文本。 */
   query: string;
-  /** 可选：先用 metadata 缩小范围，再做相似度（混合检索） */
-  filters?: {
-    industry?: string;
-    contract_type?: string;
-    tag_ai?: 0 | 1;
-  };
-  /** 返回条数上限，默认 50 */
+  /** 输出形态：fragments=片段原文+出处（RAG，默认）；ids=去重 contract_ids（联动 sql_query）。 */
+  mode?: "fragments" | "ids";
+  /** 混合检索标量过滤：锁定单合同 / 限定模块字段 / 限定 AI 大方向。 */
+  filter?: RecallFilter;
+  /** 召回条数，默认 50。 */
   top_k?: number;
+  /** 精排条数，默认 8。 */
+  top_n?: number;
 }
 
-interface VectorHit {
-  contract_id: number;
-  score: number;
+/** 生产装配：真实 env 客户端。测试直接调 twoStageSearch(注入 fake)，不走这里。 */
+function defaultDeps(): TwoStageDeps {
+  return { embedder: new QwenEmbedder(), recaller: new MilvusRecaller(), reranker: new QwenReranker() };
 }
 
-interface VectorResult {
-  query: string;
-  contract_ids: number[]; // 供 sql_query 二次统计
-  hits: VectorHit[]; // 带分数，便于 Agent/评测判断相关性
-}
-
-export default {
-  name: "vector_search",
-  description:
-    "对合同分段原文做语义相似度检索，用于标签命中不了的模糊提问（如“类似/相关/相似”）。" +
-    "返回命中的 contract_ids 列表，供后续 sql_query 二次统计。可选 metadata 过滤缩小范围。",
-  parameters: {
-    type: "object",
-    properties: {
-      query: { type: "string", description: "语义查询文本" },
-      filters: {
-        type: "object",
-        properties: {
-          industry: { type: "string" },
-          contract_type: { type: "string" },
-          tag_ai: { type: "number", enum: [0, 1] },
+export function makeVectorSearchTool(deps?: TwoStageDeps) {
+  // 惰性装配：不在 import/构造期建真实 Milvus 连接（避免副作用）；execute 首次用到才建。
+  let resolved: TwoStageDeps | undefined = deps;
+  const getDeps = () => (resolved ??= defaultDeps());
+  return {
+    name: "vector_search",
+    description:
+      "对合同分段原文做语义检索（两阶段：召回 50 → 精排 8）。用于标签命中不了的模糊提问" +
+      "（“类似/相似/相关”）或需要合同原文片段的问题。mode=fragments 返回片段原文+出处供带出处作答；" +
+      "mode=ids 返回去重 contract_ids 供 sql_query 二次统计。filter 可锁定单合同(contract_id)或模块(field)。",
+    parameters: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "语义查询文本" },
+        mode: {
+          type: "string",
+          enum: ["fragments", "ids"],
+          description: "fragments=片段原文+出处（RAG，默认）；ids=去重 contract_ids（联动统计）",
         },
-        additionalProperties: false,
+        filter: {
+          type: "object",
+          properties: {
+            contract_id: { type: "number", description: "锁定单合同" },
+            field: { type: "string", description: "限定来源字段/模块（如 service）" },
+            module_category: { type: "string", description: "限定 AI 大方向" },
+          },
+          additionalProperties: false,
+        },
+        top_k: { type: "number", description: "召回条数，默认 50" },
+        top_n: { type: "number", description: "精排条数，默认 8" },
       },
-      top_k: { type: "number", description: "返回条数上限，默认 50" },
+      required: ["query"],
+      additionalProperties: false,
     },
-    required: ["query"],
-    additionalProperties: false,
-  },
-  execute: async (_toolCallId: string, params: VectorSearchParams) => {
-    // ───────────────────────────────────────────────────────
-    // TODO(你实现)：
-    //   1. 对 params.query 生成 embedding（调你的 embedding 模型）；
-    //   2. 在向量库做相似度检索 + params.filters 的 metadata 过滤；
-    //   3. 取 top_k（默认 50），去重后收集 contract_id。
-    //
-    // 示例形态（替换成你的向量库客户端）：
-    //   const vec = await embed(params.query);
-    //   const hits = await vectorStore.search(vec, { filter: params.filters, topK: params.top_k ?? 50 });
-    // ───────────────────────────────────────────────────────
-    const hits: VectorHit[] = []; // TODO
-    const result: VectorResult = {
-      query: params.query,
-      contract_ids: [...new Set(hits.map((h) => h.contract_id))],
-      hits,
-    };
+    execute: async (_toolCallId: string, params: VectorSearchParams) => {
+      try {
+        const fragments = await twoStageSearch(params.query, getDeps(), {
+          topK: params.top_k,
+          topN: params.top_n,
+          filter: params.filter,
+        });
+        const mode = params.mode ?? "fragments";
+        const result =
+          mode === "ids"
+            ? { query: params.query, mode, contract_ids: toContractIds(fragments) }
+            : { query: params.query, mode, fragments };
+        return {
+          content: [{ type: "text", text: JSON.stringify(result) }],
+          details: result,
+        };
+      } catch (e) {
+        const message = (e as Error).message;
+        // 端点不可达等 → 如实回灌，Agent 说检索失败，不编造片段。
+        return {
+          content: [{ type: "text", text: `语义检索失败：${message}` }],
+          details: { error: "vector_search_error", message },
+        };
+      }
+    },
+  };
+}
 
-    return {
-      content: [{ type: "text", text: JSON.stringify(result) }],
-      details: result,
-    };
-  },
-};
+export default makeVectorSearchTool();

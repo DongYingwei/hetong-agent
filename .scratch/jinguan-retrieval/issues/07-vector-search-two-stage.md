@@ -4,7 +4,16 @@
 
 **Blocked by:** T06(联动契约——sql_query 需要 contract_ids 列表)、T04(Milvus 里有向量数据可查)
 
-**Status:** ready-for-agent · **AFK**（G2 端点已探明；仅需 T04 灌数据）
+**Status:** ✅ done（2026-08-12，含真集成）· **AFK**
+
+> ✅ **完成**：
+> - **开源选型**（已确认）：`@zilliz/milvus2-sdk-node`（官方 SDK，匹配真 Milvus v2.4.5）+ `openai`（embedding OpenAI 兼容）+ `fetch`（rerank）。**LlamaIndex 评估结论=不用**（TS 版 Milvus/rerank 支持不如 Python 版成熟；collection 已由解析侧自建，套抽象反增适配成本）。
+> - `src/vectorClients.ts`（新）：Embedder/Recaller/Reranker 三接口 + 真实客户端（端点 env 读，2560 维，COSINE，标量过滤 contract_id/field/module_category）。
+> - `src/vector_search.ts`（重写）：`twoStageSearch`（embed→召回 top_k=50→rerank top_n≤8）+ **双形态**（mode=fragments 片段原文+四字段出处 / mode=ids 去重 contract_ids 联动 sql_query，坑4 单工具不拆二）+ 依赖注入 + 惰性装配（import 不建真连接）。
+> - `coremind.yaml` systemPrompt 补 vector_search 双形态路由（fragments/ids + filter.contract_id 锁定单合同）。
+> - **测试 28 全绿**：8 双形态单测（fake embed/recall/rerank：两阶段/topN 截断/混合 filter 下传/空召回不 rerank/去重保序/双形态/失败回灌）+ **2 真集成**（真 .33:8008 embedding + 真 .33:8012 reranker + 真 localhost:19530 Milvus：语义召回巡检片段排首、混合 filter contract_id 缩小召回；临时 collection 自建自清）。tsc 通过。
+>
+> 备注：本环境三端点均可达且 Milvus v2.4.5 在线（G2 实际已通），故超出 AFK 预期跑通真集成；正式 `contract_chunks` 尚无数据（待 T04 批量灌），集成测试用独立临时 collection 验证。
 
 > ✅ **端点契约已确认(2026-08-12 真调)**——G2 大部分解决：
 > - **embedding** `http://192.168.121.33:8008/v1/embeddings`（vLLM **OpenAI 兼容**），模型 `Qwen3-Embedding-4B`，**2560 维**。TS 侧用 openai 兼容 client 调即可。

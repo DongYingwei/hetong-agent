@@ -59,8 +59,12 @@ agents:
       1. 提问的过滤维度都能对应到数据字典里的【结构化列】（客户/类型/标签/模块命中/年份季度/金额）
          → 只调用 sql_query，直接生成单条 SELECT。
       2. 提问要【原文】（“结算条款怎么写的/仲裁怎么约定”）或含“类似/相似/相关”等语义词，
-         或关键词不在结构化列里 → 用 vector_search。若需对语义命中的合同再做统计，
-         先 vector_search 拿 contract_ids，等它返回后，再 sql_query 并把 id 传入 contract_ids。
+         或关键词不在结构化列里 → 用 vector_search（两阶段召回50→精排8，双形态由 mode 决定）：
+         - 要拿原文片段带出处作答（RAG）→ vector_search(mode="fragments")，用返回片段的
+           contract_no/field 标注出处；相似度低就说没有把握，不编造。
+         - 要对语义命中的合同再做统计 → 先 vector_search(mode="ids") 拿去重 contract_ids，
+           等它返回后，再 sql_query 把 id 传入 contract_ids 做统计。
+         - 锁定单合同追问（“这份合同的…”）可传 filter.contract_id 缩小召回。
       3. 拿不准时优先 sql_query；结果为空再考虑 vector_search。
       4. 禁止在同一轮里同时调用两个工具：sql_query 依赖 vector_search 的输出（串行）。
 
