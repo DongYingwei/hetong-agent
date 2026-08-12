@@ -15,31 +15,31 @@
                           用户（浏览器）
                                │
         ┌──────────────────────▼──────────────────────┐
-   ①    │  前端 Vue3+Element-Plus  jingxiaoguan-master/frontend/   │
+   ①    │  前端 Vue3+Element-Plus  apps/web/   │
         │     AgentSearch 聊天 UI · 台账/核对/关键词/文件 管理页       │
         └──────────────────────┬──────────────────────┘
                                │ HTTP  {code,msg,data}
         ┌──────────────────────▼──────────────────────┐
-   ②    │  网关 Node/Koa  jingxiaoguan-master/backend/  (:3001)      │
+   ②    │  网关 Node/Koa  apps/gateway/  (:3001)      │
         │     鉴权(JWT) + 运营 CRUD(登录/台账/关键词/文件…)            │
         │     /api/agent/chat ──代理──┐                             │
         └───────────┬────────────────┼─────────────────┘
                     │ 运营库(PG)      │ {message,history}
                     ▼                 ▼
               contract_assistant  ┌───────────────────────────────┐
-              (运营表7张)      ③  │  查询 Agent  CoreMind/TS  jinguan-qa/ │
+              (运营表7张)      ③  │  查询 Agent  CoreMind/TS  apps/query-agent/ │
                                  │   ReAct → sql_query(只读SQL)         │
                                  │        → vector_search(召回50→精排8)  │
                                  └───────┬───────────────┬───────────┘
                                 只读 SQL │               │ 向量检索
                     ┌───────────────────▼──┐         ┌──▼──────────┐
    ④(共享契约)      │  PostgreSQL           │         │  Milvus      │
-                    │  contracts-db/        │◀──写──┐ │  contract_   │◀─写─┐
+                    │  packages/contracts-db/        │◀──写──┐ │  contract_   │◀─写─┐
                     │  contracts 29字段+片段 │       │ │  chunks 向量  │     │
                     └───────────────────────┘       │ └─────────────┘     │
                                                      │                     │
         ┌────────────────────────────────────────── ┴─────────────────────┴┐
-   ⑤    │  解析模块 Python  jinguan-parse/                                    │
+   ⑤    │  解析模块 Python  apps/parse-service/                                    │
         │   PDF → MinerU → LLM 抽 20 AI 字段 → 人工核对 → 写 PG + 建向量        │
         └────────────────────────────────────────────────────────────────┘
 
@@ -49,14 +49,14 @@
 
 | # | 层 | 运行时 | 目录 | 职责 | 是否保留 |
 |---|---|---|---|---|---|
-| ① | 前端 | Vue3+Element-Plus | `jingxiaoguan-master/frontend/` | 聊天 UI + 运营管理页（成品 UI，只改对接真实 API） | ✅ 保留 |
-| ② | 网关 | Node/Koa (:3001) | `jingxiaoguan-master/backend/` | 鉴权 + 运营 CRUD + `/agent/chat` 代理到 CoreMind | ✅ 保留（T10 已迁 PG） |
-| ③ | 查询 Agent | CoreMind/TS | `jinguan-qa/` | ReAct → `sql_query` + `vector_search` → 带出处答案 | ✅ 核心 |
-| ④ | 共享数据契约 | PostgreSQL + Milvus | `contracts-db/` | 解析写 / 查询读的同一套表 + 向量库 | ✅ 核心 |
-| ⑤ | 解析模块 | Python | `jinguan-parse/` | PDF→MinerU→LLM→人工核对→写 PG + 建向量 | ✅ 核心 |
+| ① | 前端 | Vue3+Element-Plus | `apps/web/` | 聊天 UI + 运营管理页（成品 UI，只改对接真实 API） | ✅ 保留 |
+| ② | 网关 | Node/Koa (:3001) | `apps/gateway/` | 鉴权 + 运营 CRUD + `/agent/chat` 代理到 CoreMind | ✅ 保留（T10 已迁 PG） |
+| ③ | 查询 Agent | CoreMind/TS | `apps/query-agent/` | ReAct → `sql_query` + `vector_search` → 带出处答案 | ✅ 核心 |
+| ④ | 共享数据契约 | PostgreSQL + Milvus | `packages/contracts-db/` | 解析写 / 查询读的同一套表 + 向量库 | ✅ 核心 |
+| ⑤ | 解析模块 | Python | `apps/parse-service/` | PDF→MinerU→LLM→人工核对→写 PG + 建向量 | ✅ 核心 |
 
-> **⚠️ 两个库别混**：`contracts-db`（④，查询侧只读，`contracts` 29 字段）是查询库；网关的 `contract_assistant`（②，运营 CRUD，7 张运营表）是运营库。二者**不是同一个库**。
-> **⚠️ `jingxiaoguan-master` 前端+后端都保留**：前端硬依赖后端 30+ 接口（删后端=前端全线 Network Error）。废弃的只是原型的技术选型（MySQL/裸 LLM/10 字段表），不是代码本身。
+> **⚠️ 两个库别混**：`packages/contracts-db`（④，查询侧只读，`contracts` 29 字段）是查询库；网关的 `contract_assistant`（②，运营 CRUD，7 张运营表）是运营库。二者**不是同一个库**。
+> **⚠️ 网关(`apps/gateway`)+前端(`apps/web`)都保留**：源自原型 `jingxiaoguan-master`，前端硬依赖后端 30+ 接口（删网关=前端全线 Network Error）。废弃的只是原型的技术选型（MySQL/裸 LLM/10 字段表），不是代码本身。
 
 ---
 
@@ -68,34 +68,36 @@ hetong-agent/
 ├── handoff.md              ← 详细交接（进度/决策/坑）
 ├── AGENTS.md · CONTEXT-MAP.md   ← Agent skills 配置 / 多上下文根索引
 │
-├── contracts-db/          ④ 共享数据契约（解析写·查询读）
-│   ├── migrations/            001_contracts.sql(29字段+片段) · 002_contract_md_sync.sql
-│   ├── seeds/                 001_dict.sql(枚举字典+4模块种子)
-│   └── tests/                 Docker PG 断言
+├── apps/                   ← 可部署的服务/应用（monorepo）
+│   ├── parse-service/      ⑤ 解析模块（Python）
+│   │   ├── src/jinguan_parse/   clients·schema·keywords·extract·persist（抽取）
+│   │   │                        confirm·vector·sync·ingest·api（核对/建向量/同步/批处理）·chunking·config
+│   │   └── tests/               40 测试（fake 逻辑层 + 真 PG/Milvus 集成层）
+│   │
+│   ├── query-agent/        ③ 查询 Agent（CoreMind/TS）
+│   │   ├── coremind.yaml        Agent 定义 + systemPrompt（路由/口径/出处/锁定）
+│   │   ├── src/                 sql_query·assertReadOnly（Text-to-SQL 只读三防线）
+│   │   │                        vector_search·vectorClients（两阶段召回50→精排8）
+│   │   ├── skills/jinguan-schema/  数据字典（列语义，注入 systemPrompt）
+│   │   ├── evals/scenarios.yaml    11 评测场景
+│   │   ├── docs/adr · docs/specs   架构决策 / 规格
+│   │   └── tests/               28 vitest（单测 + 真 embed/Milvus/rerank 集成）
+│   │
+│   ├── gateway/            ② 网关（Node/Koa :3001）
+│   │   ├── src/routes(13路由) · config/db.js(PG) · services/agentService.js(代理 CoreMind)
+│   │   └── scripts/init_pg.sql   运营库 DDL（7 张运营表）
+│   │
+│   └── web/               ① 前端（Vue3）src/views(17页,含 AgentSearchView) · src/api(14模块)
 │
-├── jinguan-parse/         ⑤ 解析模块（Python）
-│   ├── src/jinguan_parse/     clients·schema·keywords·extract·persist（抽取）
-│   │                          confirm·vector·sync·ingest·api（核对/建向量/同步/批处理）
-│   │                          chunking·config
-│   └── tests/                 40 测试（fake 逻辑层 + 真 PG/Milvus 集成层）
+├── packages/               ← 跨服务共享的契约/库
+│   └── contracts-db/       ④ 共享数据契约（解析写·查询读）
+│       ├── migrations/          001_contracts.sql(29字段+片段) · 002_contract_md_sync.sql
+│       ├── seeds/               001_dict.sql(枚举字典+4模块种子)
+│       └── tests/               Docker PG 断言
 │
-├── jinguan-qa/            ③ 查询 Agent（CoreMind/TS）
-│   ├── coremind.yaml          Agent 定义 + systemPrompt（路由/口径/出处/锁定）
-│   ├── src/                   sql_query·assertReadOnly（Text-to-SQL 只读三防线）
-│   │                          vector_search·vectorClients（两阶段召回50→精排8）
-│   ├── skills/jinguan-schema/ 数据字典（列语义，注入 systemPrompt）
-│   ├── evals/scenarios.yaml   11 评测场景
-│   ├── docs/adr · docs/specs  架构决策 / 规格
-│   └── tests/                 28 vitest（单测 + 真 embed/Milvus/rerank 集成）
-│
-├── jingxiaoguan-master/   ①② 网关 + 前端（保留）
-│   ├── backend/               Koa 网关：src/routes(13路由) · config/db.js(PG)
-│   │                          scripts/init_pg.sql · services/agentService.js(代理)
-│   └── frontend/              Vue3：src/views(17页,含 AgentSearchView) · src/api(14模块)
-│
-├── vendor/coremind/       CoreMind 框架（vendored，③ 依赖它跑）
-├── data/                  合同 PDF/MD 素材（大文件 gitignore，本地保留）
-└── docs/ · demo/          领域文档 / 原型 demo
+├── vendor/coremind/        CoreMind 框架（vendored，③ 依赖它跑）
+├── data/                   合同 PDF/MD 素材（大文件 gitignore，本地保留）
+└── docs/                   领域文档（含 prototype-reference/ 原型 demo+plan 归档）
 ```
 
 ---
@@ -104,7 +106,7 @@ hetong-agent/
 
 | 工单 | 层 | 状态 | 位置 | 验证 |
 |---|---|---|---|---|
-| **T01** PG 建表 + 种子 + 配置驱动模块 | ④ | ✅ | `contracts-db/` | Docker PG16 断言绿 |
+| **T01** PG 建表 + 种子 + 配置驱动模块 | ④ | ✅ | `packages/contracts-db/` | Docker PG16 断言绿 |
 | **T02** 解析测试接缝（结构感知切分） | ⑤ | ✅ | `chunking.py` | pytest 绿 |
 | **T03** MinerU + LLM 抽取 | ⑤ | ✅ | `clients/schema/keywords/extract/persist.py` | **真端到端冒烟**（真 PDF→MinerU→DeepSeek） |
 | **T04** 核对→正式库 + 建向量 + 片段同步 + 批处理 | ⑤ | ✅ | `confirm/vector/sync/ingest/api.py` | 真 PG + 真 Milvus v2.4.5 **40 测试绿** |
@@ -112,9 +114,9 @@ hetong-agent/
 | **T06** sql_query 裸 SQL + assertReadOnly | ③ | 🟢 | `sql_query.ts` `assertReadOnly.ts` | 18 vitest 绿 · 端到端待 G1 |
 | **T07** vector_search 两阶段 + 双形态 | ③ | ✅ | `vector_search.ts` `vectorClients.ts` | **28 vitest 绿**（含真 embed+Milvus+rerank） |
 | **T08** RAG 路由 + 出处 + 单合同锁定 | ③ | 🟢 | `coremind.yaml` `evals/scenarios.yaml` | 11 场景 schema 校验 · 端到端待 API key+G1 |
-| **T10** Koa 网关 MySQL→PG + CoreMind 代理 | ② | ✅ | `jingxiaoguan-master/backend/` | 真 PG16 **三冒烟绿**（登录/CRUD/agent 代理） |
+| **T10** Koa 网关 MySQL→PG + CoreMind 代理 | ② | ✅ | `apps/gateway/` | 真 PG16 **三冒烟绿**（登录/CRUD/agent 代理） |
 
-测试：`cd jinguan-parse && python3 -m pytest tests/`（40 绿） · `cd jinguan-qa && npx vitest run`（28 绿）
+测试：`cd apps/parse-service && python3 -m pytest tests/`（40 绿） · `cd apps/query-agent && npx vitest run`（28 绿）
 
 ---
 
@@ -137,7 +139,7 @@ hetong-agent/
 
 ## 六、关键配置 / 端点
 
-真实值在 `jinguan-parse/.env`（**被 .gitignore 挡住，勿提交**；模板见 `.env.example`）：
+真实值在 `apps/parse-service/.env`（**被 .gitignore 挡住，勿提交**；模板见 `.env.example`）：
 
 | 用途 | 地址 | 备注 |
 |---|---|---|
@@ -153,7 +155,7 @@ hetong-agent/
 
 ## 七、绝对不要再踩的坑
 
-1. **🔴 数据库是 PostgreSQL 不是 MySQL**。`jingxiaoguan-master` 的 MySQL/裸 LLM/10 字段表都是原型。正式版统一 PG。别碰它的 `init.sql`。
+1. **🔴 数据库是 PostgreSQL 不是 MySQL**。网关源自的原型（`jingxiaoguan-master`，代码已迁入 `apps/gateway`+`apps/web`）里 MySQL/裸 LLM/10 字段表都是原型。正式版统一 PG。别碰 `apps/gateway/scripts/init.sql`（原型 MySQL DDL，废弃）。
 
 2. **🔴 模块是配置驱动的（ADR-0004），不是固定四列**。原型「合同模块」页可新增模块。已建 `contract_modules`(配置：module_key/name/anchor_names/enabled) + `contract_module_hits`(每合同×每模块一行)。查询侧模块过滤是 **JOIN 明细表**（`WHERE module_key='service' AND hit=1`），**不是** `mod_service_ai=1` 宽列。`contracts` 表已无 `mod_*` 宽列。
 
@@ -167,7 +169,7 @@ hetong-agent/
 
 7. **🔴 assertReadOnly 必须放行多表 JOIN**（T06）。模块查询靠 JOIN `contract_module_hits`，只拒写操作/多语句/注释注入，别因"多表"误杀。真解析用 sqlglot/sqlparse（评测后），别手写正则。
 
-8. **🔴 解析(Python) 和查询(CoreMind/TS) 是不同运行时**。共同契约：`contracts-db` 的 PG DDL + Milvus collection + metadata 字段名（同一套）。解析写、查询只读。
+8. **🔴 解析(Python) 和查询(CoreMind/TS) 是不同运行时**。共同契约：`packages/contracts-db` 的 PG DDL + Milvus collection + metadata 字段名（同一套）。解析写、查询只读。
 
 9. **🔴 GitHub Issues 未发**。工单都是本地 markdown。发 GitHub 是外部动作，需用户显式点头（且当前无 gh/token）。
 
@@ -186,10 +188,10 @@ hetong-agent/
 
 1. 本 `README.md`（当前）
 2. `handoff.md` **第零节**（最新进度）+ 后续节（设计背景）
-3. `jinguan-qa/CONTEXT.md`（领域词汇表）
-4. `jinguan-qa/docs/adr/0001~0004`（架构决策，0004 最关键=配置驱动模块）
-5. `jinguan-qa/docs/specs/S1/S2/S3`（三份 spec）
+3. `apps/query-agent/CONTEXT.md`（领域词汇表）
+4. `apps/query-agent/docs/adr/0001~0004`（架构决策，0004 最关键=配置驱动模块）
+5. `apps/query-agent/docs/specs/S1/S2/S3`（三份 spec）
 6. `.scratch/jinguan-retrieval/issues/01–11`（工单，按编号）
-7. `jinguan-parse/src/jinguan_parse/`（解析侧已实现代码）+ `contracts-db/migrations/001_contracts.sql`（schema）
+7. `apps/parse-service/src/jinguan_parse/`（解析侧已实现代码）+ `packages/contracts-db/migrations/001_contracts.sql`（schema）
 
-**跑测试**：`cd jinguan-parse && python3 -m pytest tests/ -q`（需 Docker 跑临时 PG；集成层需 `.33` 端点 + 本地 Milvus 可达）。
+**跑测试**：`cd apps/parse-service && python3 -m pytest tests/ -q`（需 Docker 跑临时 PG；集成层需 `.33` 端点 + 本地 Milvus 可达）。

@@ -19,9 +19,9 @@ import pytest
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
-_ROOT = pathlib.Path(__file__).resolve().parents[2]  # repo root
-_DDL = _ROOT / "contracts-db" / "migrations" / "001_contracts.sql"
-_SEED = _ROOT / "contracts-db" / "seeds" / "001_dict.sql"
+_ROOT = pathlib.Path(__file__).resolve().parents[3]  # repo root
+_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "001_contracts.sql"
+_SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import extract_one_contract, ModuleConfig, KeywordMatcher, ContractExtraction  # noqa: E402
 from jinguan_parse.schema import SummaryFields, AmountFields, CommercialFields  # noqa: E402

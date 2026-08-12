@@ -24,11 +24,11 @@
 
 | # | 层 | 运行时 | 目录 |
 |---|---|---|---|
-| ① | 前端 | Vue3+Element-Plus | `jingxiaoguan-master/frontend/` |
-| ② | 网关 | Node/Koa (:3001) | `jingxiaoguan-master/backend/` |
-| ③ | 查询 Agent | CoreMind/TS | `jinguan-qa/`（依赖 `vendor/coremind`） |
-| ④ | 共享数据契约 | PostgreSQL + Milvus | `contracts-db/` |
-| ⑤ | 解析模块 | Python | `jinguan-parse/` |
+| ① | 前端 | Vue3+Element-Plus | `apps/web/` |
+| ② | 网关 | Node/Koa (:3001) | `apps/gateway/` |
+| ③ | 查询 Agent | CoreMind/TS | `apps/query-agent/`（依赖 `vendor/coremind`） |
+| ④ | 共享数据契约 | PostgreSQL + Milvus | `packages/contracts-db/` |
+| ⑤ | 解析模块 | Python | `apps/parse-service/` |
 
 ---
 
@@ -36,19 +36,19 @@
 
 | 工单 | 层 | 状态 | 位置 | 验证 |
 |---|---|---|---|---|
-| **T01** PG 建表+种子+配置驱动模块 | ④ | ✅ | `contracts-db/migrations,seeds` | Docker PG16 断言绿 |
+| **T01** PG 建表+种子+配置驱动模块 | ④ | ✅ | `packages/contracts-db/migrations,seeds` | Docker PG16 断言绿 |
 | **T02** 解析测试接缝（结构感知切分） | ⑤ | ✅ | `chunking.py` | pytest 绿 |
 | **T03** MinerU+LLM 抽取 | ⑤ | ✅ | `clients/schema/keywords/extract/persist.py` | **真端到端冒烟**（真 PDF→MinerU→DeepSeek） |
 | **T04** 核对→正式库+建向量+片段同步+批处理 | ⑤ | ✅ | `confirm/vector/sync/ingest/api.py` | 真 PG + 真 Milvus v2.4.5 |
-| **T05** schema skill 重写（列语义+JOIN 明细表） | ③ | ✅ | `jinguan-qa/skills/jinguan-schema/` | 24 列对齐 DDL·grep 校验 |
-| **T06** sql_query 裸 SQL + assertReadOnly | ③ | 🟢 构建完成 | `jinguan-qa/src/{sql_query,assertReadOnly}.ts` | 18 vitest 绿·端到端待 G1 |
-| **T07** vector_search 两阶段+双形态 | ③ | ✅ | `jinguan-qa/src/{vector_search,vectorClients}.ts` | **真 embed+Milvus+rerank 集成绿** |
+| **T05** schema skill 重写（列语义+JOIN 明细表） | ③ | ✅ | `apps/query-agent/skills/jinguan-schema/` | 24 列对齐 DDL·grep 校验 |
+| **T06** sql_query 裸 SQL + assertReadOnly | ③ | 🟢 构建完成 | `apps/query-agent/src/{sql_query,assertReadOnly}.ts` | 18 vitest 绿·端到端待 G1 |
+| **T07** vector_search 两阶段+双形态 | ③ | ✅ | `apps/query-agent/src/{vector_search,vectorClients}.ts` | **真 embed+Milvus+rerank 集成绿** |
 | **T08** RAG 路由+出处+单合同锁定 | ③ | 🟢 构建完成 | `coremind.yaml` + `evals/scenarios.yaml` | 11 场景 schema 校验·端到端待 API key+G1 |
-| **T10** Koa 网关 MySQL→PG + CoreMind 代理 | ② | ✅ | `jingxiaoguan-master/backend/` | 真 PG16 **三冒烟绿** |
+| **T10** Koa 网关 MySQL→PG + CoreMind 代理 | ② | ✅ | `apps/gateway/` | 真 PG16 **三冒烟绿** |
 
 **测试全绿**：
-- `cd jinguan-parse && python3 -m pytest tests/` → **40 passed**
-- `cd jinguan-qa && npx vitest run` → **28 passed**（含真 .33:8008 embed + 真 localhost:19530 Milvus + 真 .33:8012 rerank 集成）
+- `cd apps/parse-service && python3 -m pytest tests/` → **40 passed**
+- `cd apps/query-agent && npx vitest run` → **28 passed**（含真 .33:8008 embed + 真 localhost:19530 Milvus + 真 .33:8012 rerank 集成）
 
 ### 各工单产出要点（新会话要改动前先看这里）
 
@@ -82,7 +82,7 @@
 | 工单 | 层 | 说明 | 卡点 |
 |---|---|---|---|
 | **T11** 前端接真实数据 | ① | `AgentSearchView.vue` 的 MessageItem 扩为 `{content, tableData?, sql?, citations?}`，对接网关 `/api/agent/chat`（T10 已给好这个富格式契约）；去掉硬编码 mock（`generate42Contracts`）；SQL 折叠块 + RAG 出处 UI | **无卡点，推荐下一个做** |
-| **T09** eval gate | ③ | 跑通 `jinguan-qa/evals/scenarios.yaml` 全绿（trajectory/串行/诚实性断言先跑，数值真值待 G4 收紧） | 需 `DEEPSEEK_API_KEY` + G1 |
+| **T09** eval gate | ③ | 跑通 `apps/query-agent/evals/scenarios.yaml` 全绿（trajectory/串行/诚实性断言先跑，数值真值待 G4 收紧） | 需 `DEEPSEEK_API_KEY` + G1 |
 
 **部署联调接缝**：CoreMind（③）需以 HTTP 暴露一个 `/chat` 端点，契约 `{message, history}` → `{content, tableData?, sql?, citations?}`；网关 `COREMIND_URL` 指向它即可打通 ①→②→③。当前 CoreMind 只有 CLI（`vendor/coremind`），HTTP 暴露方式待定（可能要写个薄 HTTP wrapper 调 CoreMind SDK/CLI）——这是 T11 联调前要解决的。
 
@@ -93,14 +93,14 @@
 ## 五、绝对不要再踩的坑
 
 ### 🔴 坑1：数据库是 PostgreSQL 不是 MySQL
-原型 `jingxiaoguan-master/backend/scripts/init.sql` 是 MySQL DDL，那是废弃的。全系统统一 PG。T10 已把网关迁到 PG（`init_pg.sql`）。**别碰 `init.sql`，别引入 mysql2。**
+原型 `apps/gateway/scripts/init.sql` 是 MySQL DDL，那是废弃的。全系统统一 PG。T10 已把网关迁到 PG（`init_pg.sql`）。**别碰 `init.sql`，别引入 mysql2。**
 
 ### 🔴 坑2：两个 PG 库别混
-- **④ 查询库**（`contracts-db`，`contracts` 29 字段）：解析写、查询侧**只读**。
+- **④ 查询库**（`packages/contracts-db`，`contracts` 29 字段）：解析写、查询侧**只读**。
 - **② 运营库**（网关的 `contract_assistant`，7 张运营表 sys_user/contract_ledger 等）：网关 CRUD 用。
 二者**不是同一个库**，表结构不同（运营库 `contract_ledger` 是原型 10 字段，查询库 `contracts` 是正式 29 字段）。
 
-### 🔴 坑3：`jingxiaoguan-master` 前端和后端**都保留、都用**
+### 🔴 坑3：网关(`apps/gateway`)和前端(`apps/web`)**都保留、都用**（源自原型 jingxiaoguan-master）
 前端 axios `baseURL` 硬编码指向后端 `:3001/api`，深度依赖它 30+ 接口（登录/用户/角色/部门/菜单/字典/台账/关键词/范本/文件/首页/订单 + agent/chat）。**删后端 = 前端全线 Network Error。** 只有 `/agent/chat` 转发 CoreMind，其余 CRUD 后端自己处理。废弃的只是原型的**技术选型**，不是后端代码。
 
 ### 🔴 坑4：schema skill 只声明列语义，不写固定映射表
@@ -119,7 +119,7 @@
 只有核对入正式库（`confirmed=1`）才建向量；`contracts_draft`（`confirmed=0`）绝不建。这是"查询只读已背书数据"的核心保障。
 
 ### 🔴 坑9：解析(Python) 和查询(CoreMind/TS) 是不同运行时
-解析侧一切在 Python（`jinguan-parse`）；查询侧一切在 TS（`jinguan-qa`）。共同契约：PG `contracts` DDL + Milvus schema + metadata 字段名（同名同源）。解析写、查询只读，无直接调用。
+解析侧一切在 Python（`apps/parse-service`）；查询侧一切在 TS（`apps/query-agent`）。共同契约：PG `contracts` DDL + Milvus schema + metadata 字段名（同名同源）。解析写、查询只读，无直接调用。
 
 ### 🔴 坑10：CoreMind eval 场景不支持多轮 turns
 源码 `vendor/coremind/packages/coremind-runtime/src/evaluation.ts:105` 硬校验每个 scenario 必须有 string `input`。**别写 `turns:` 多轮场景**，会导致整个 eval 文件校验失败。多轮单合同锁定靠 session 历史，eval 里用"点名合同的追问"在单轮验证。
@@ -149,9 +149,9 @@
 1. `README.md`（分层图 + 目录树 + 进度表）
 2. 本文件 `handoff.md`
 3. `CONTEXT-MAP.md`（上下文边界与关系）
-4. 要动查询侧：`jinguan-qa/CONTEXT.md` + `docs/adr/0001~0004*.md` + `skills/jinguan-schema/README.md`
-5. 要动解析侧：`jinguan-parse/` 源码 + `contracts-db/migrations/001_contracts.sql`
-6. 要动网关/前端：`jingxiaoguan-master/backend/src/` + `frontend/src/`
+4. 要动查询侧：`apps/query-agent/CONTEXT.md` + `docs/adr/0001~0004*.md` + `skills/jinguan-schema/README.md`
+5. 要动解析侧：`apps/parse-service/` 源码 + `packages/contracts-db/migrations/001_contracts.sql`
+6. 要动网关/前端：`apps/gateway/src/` + `frontend/src/`
 7. 工单细节：`.scratch/jinguan-retrieval/issues/01–11-*.md`
 
-**先跑一遍测试确认现状**：`cd jinguan-parse && python3 -m pytest tests/`（40 绿）+ `cd jinguan-qa && npx vitest run`（28 绿）。
+**先跑一遍测试确认现状**：`cd apps/parse-service && python3 -m pytest tests/`（40 绿）+ `cd apps/query-agent && npx vitest run`（28 绿）。

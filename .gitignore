@@ -9,8 +9,8 @@ data/pdf-zip/
 data/md-file/
 data/test-example/
 demo/*.pdf
-jinguan-qa/demo/*.pdf
-jingxiaoguan-master/backend/uploads/
+apps/query-agent/demo/*.pdf
+apps/gateway/uploads/
 
 # ── 依赖/构建产物 ──
 node_modules/
@@ -26,7 +26,7 @@ __pycache__/
 venv/
 
 # ── CoreMind 会话/运行时 ──
-jinguan-qa/sessions/
+apps/query-agent/sessions/
 *.log
 
 # ── 编辑器/系统 ──

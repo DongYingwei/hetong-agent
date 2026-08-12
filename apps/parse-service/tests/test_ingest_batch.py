@@ -17,9 +17,9 @@ import pytest
 
 _SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
-_ROOT = pathlib.Path(__file__).resolve().parents[2]
-_DDL = _ROOT / "contracts-db" / "migrations" / "001_contracts.sql"
-_SEED = _ROOT / "contracts-db" / "seeds" / "001_dict.sql"
+_ROOT = pathlib.Path(__file__).resolve().parents[3]
+_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "001_contracts.sql"
+_SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
     ingest_one, ingest_batch, file_sha256, IngestDeps,

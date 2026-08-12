@@ -1,6 +1,6 @@
 """解析侧配置 —— 从 .env 读端点（pydantic-settings，评测确认复用开源）。
 
-端点封在此、从 env 读（S2/S3 决策）。真实值在 jinguan-parse/.env（被 .gitignore 挡住）。
+端点封在此、从 env 读（S2/S3 决策）。真实值在 apps/parse-service/.env（被 .gitignore 挡住）。
 """
 
 from __future__ import annotations
