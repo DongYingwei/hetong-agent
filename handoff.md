@@ -22,6 +22,7 @@
 | **T06** sql_query 裸 SQL + assertReadOnly | 🟢 构建完成 | `jinguan-qa/src/{sql_query,assertReadOnly}.ts` + `coremind.yaml` | 18 vitest 绿·tsc 通过·端到端 eval 待 G1 |
 | **T07** vector_search 两阶段+双形态 | ✅ | `jinguan-qa/src/{vector_search,vectorClients}.ts` | 28 vitest 绿（含真 embed+Milvus+rerank 集成） |
 | **T08** RAG 路由+出处+单合同锁定 | 🟢 构建完成 | `coremind.yaml` systemPrompt + `evals/scenarios.yaml` | 11 场景 schema 校验通过·端到端 eval 待 API key+G1 |
+| **T10** Koa 网关 MySQL→PG + CoreMind 代理 | ✅ | `jingxiaoguan-master/backend/`（db.js/init_pg.sql/agentService.js） | 真 PG16 三冒烟绿（登录/CRUD/agent 代理） |
 
 **全套 40 测试全绿**（`cd jinguan-parse && python3 -m pytest tests/`）。
 
@@ -60,9 +61,10 @@ jinguan-qa/            ← 查询侧 TS（未动，T05+ 才碰）
 
 ### 下一步选项
 
-1. 转 T09（eval gate：跑通 scenarios 全绿，需 DEEPSEEK_API_KEY + G1 真值）或 T10（Koa 网关，独立支线）
-2. 转 T11（前端接真实 CoreMind API，需 T10 网关先通）
+1. 转 T11（前端接真实数据：MessageItem 扩 {content,tableData?,sql?,citations?}，对接网关 /api/agent/chat；T10 已给富格式契约）
+2. 转 T09（eval gate：跑通 scenarios 全绿，需 DEEPSEEK_API_KEY + G1 真值）
 3. 提供 **DEEPSEEK_API_KEY + G1 只读串/真值** → 跑 T06/T08 端到端 eval 验真实链路
+4. 部署联调：CoreMind 需以 HTTP 暴露 /chat（网关 COREMIND_URL 指向它，契约 {message,history}→{content,tableData,sql,citations}）
 4. 已提交至内网 GitLab `origin`（http://221.178.153.117:62000/weidongying/jingxiaoguan.git）；后续成果按需增量 commit
 
 ⚠️ **GitHub Issues 仍未发**（无 gh/token + 待用户授权）。所有工单仍是 `.scratch/jinguan-retrieval/issues/01–11-*.md` 本地 markdown（T01/02/03/04 已在其中标进度）。

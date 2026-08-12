@@ -20,9 +20,15 @@ router.post('/chat', async (ctx) => {
 
   const result = await chat(message, history);
   if (result.success) {
-    ctx.success({ content: result.content });
+    // 透传 CoreMind 富格式（前端 MessageItem 扩展字段，T11 用；无值不影响老前端）
+    ctx.success({
+      content: result.content,
+      tableData: result.tableData,
+      sql: result.sql,
+      citations: result.citations,
+    });
   } else {
-    ctx.fail(result.error || '智能体处理失败', 500);
+    ctx.fail(result.error || '智能体处理失败', result.code || 500);
   }
 });
 

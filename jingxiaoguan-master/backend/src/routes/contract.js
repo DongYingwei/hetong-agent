@@ -106,9 +106,9 @@ router.post('/create', async (ctx) => {
 
   await withTransaction(async (conn) => {
     const [res] = await conn.execute(
-      `INSERT INTO contract_ledger 
-       (contract_no, customer_name, contract_name, contract_type, sign_date, amount, assessment_line, has_ai_keyword, contract_status, verify_status) 
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+      `INSERT INTO contract_ledger
+       (contract_no, customer_name, contract_name, contract_type, sign_date, amount, assessment_line, has_ai_keyword, contract_status, verify_status)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) RETURNING id`,
       [contractNo, customerName, contractName, contractType, signDate, amount, assessmentLine, hasAiKeyword, contractStatus]
     );
 

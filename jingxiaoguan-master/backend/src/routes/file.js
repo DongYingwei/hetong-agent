@@ -83,13 +83,13 @@ router.post('/upload', async (ctx) => {
   expireDate.setDate(expireDate.getDate() + 90);
 
   const res = await query(
-    `INSERT INTO sys_file (file_name, file_path, file_url, file_size, file_type, uploader_id, expire_time) 
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO sys_file (file_name, file_path, file_url, file_size, file_type, uploader_id, expire_time)
+     VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING id`,
     [originalName, targetPath, fileUrl, fileSize, ext, uploaderId, expireDate]
   );
 
   ctx.success({
-    id: res.insertId,
+    id: res[0]?.id,
     fileName: originalName,
     fileUrl,
     fileSize,

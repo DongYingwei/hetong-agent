@@ -4,7 +4,16 @@
 
 **Blocked by:** T01(PG 有表才能连)
 
-**Status:** ready-for-agent · **AFK**（MySQL→PG 机械迁移 + 代理接缝）
+**Status:** ✅ done（2026-08-12，真 PG 三冒烟绿）· **AFK**
+
+> ✅ **完成**：
+> - **db.js 迁 PG + 兼容层**：`pg.Pool` 替 mysql2；保留 `query(sql,params)`/`withTransaction` 签名，方言差异在 db 层吸收——`?`→`$n` 顺序占位符转换 + 去反引号，故 ~8 个路由零改动。`withTransaction` 回调给 mysql2 兼容 shim（`conn.execute` 返回 `[{insertId,affectedRows,rows}]`）。
+> - **DDL 迁移**：`scripts/init_pg.sql`（7 运营表 user/dict/ledger/keyword/section/file/history + 种子）——AUTO_INCREMENT→IDENTITY、DATETIME→TIMESTAMPTZ、ON UPDATE→触发器、TINYINT→SMALLINT、ON DUPLICATE→ON CONFLICT。`setupDb.js` 改 PG（自动建库）。坑1/坑6：不碰原型 `init.sql`(MySQL)。
+> - **insertId 修**：file.js/contract.js 两处 INSERT 加 `RETURNING id`；文件 3 个月保留清理（cleanupService `NOW()`）不变。
+> - **/agent/chat 代理 CoreMind**：`agentService.js` 删裸 `generateText`，改代理到 `COREMIND_URL`，透传富格式 `{content,tableData,sql,citations}`（T11 前端用）；未配置→503、不可达→502、超时→504，不回退裸 LLM。config 加 coremind.url/timeoutMs；DB 默认端口 3306→5432。
+> - **package.json**：mysql2 → pg。
+>
+> **三冒烟真 PG 验证通过**（Docker PG16 + setupDb + 起服务）：①login admin/admin123 → JWT（密码哈希校验 + `?`→`$n` 通）②`/api/contract/list?page&pageSize` → `{code:200}` 分页列表（LIMIT/OFFSET 翻译通）；无 token → 401 ③`/api/agent/chat` 未配 → 503 优雅降级；配假 CoreMind → 富格式 `{content,tableData,sql,citations}` 正确透传。响应格式 `{code,msg,data}` 全程不变，前端零改动可对接。
 
 ## 九维度
 
