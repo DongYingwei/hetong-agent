@@ -4,7 +4,18 @@
 
 **Blocked by:** T06(sql_query 通)、T07(vector_search 通)
 
-**Status:** ready-for-agent · **AFK**（prompt/逻辑，无外部依赖）
+**Status:** 🟢 构建完成（systemPrompt + eval 场景就位，schema 校验通过）· **AFK**
+
+> ✅ **构建完成（2026-08-12）**：
+> - `coremind.yaml` systemPrompt 补齐 T08 四块：
+>   - **RAG 原文作答与出处**：每条依据强制标注三要素【合同号+来源字段/模块+原文引用片段】，只依据 vector_search 返回片段作答，引用原文须来自 content。
+>   - **低相似度诚实**：相似度低/无关/无返回 → 「未找到足够相关的原文」，不编造合同号/字段/数字。
+>   - **单合同锁定**：依对话历史推断当前 contract_id，vector_search 传 filter.contract_id 限定；无法唯一确定则反问澄清。
+>   - **串行防并发（坑10）强化**：三路径全串行（纯统计只 sql_query / 纯原文只 vector_search / 联动先向量后 SQL），禁同步并发发起两工具，sql_query 的 contract_ids 必须来自已返回的 vector_search。
+> - `evals/scenarios.yaml` 重写为 **11 场景**（对齐 T05 schema，删旧行业/运维措辞）：模块 JOIN 统计、金额上限口径、时间假设、语义路由到统计（vector→sql 串行）、纯 RAG 出处、低相似度诚实、单合同锁定出处、空结果、越界拒答、越域拒答。**CoreMind eval schema 校验通过**（每场景 string id+input、无非法字段、grader 类型合法）。
+> - 注：CoreMind eval 场景为**单条 input**（不支持多轮 turns，源码 evaluation.ts:105 硬校验）；多轮单合同锁定靠 session 历史，eval 里用「点名合同的追问」在单轮验证。
+>
+> ⏳ **端到端 eval 待两条件**：①`DEEPSEEK_API_KEY`（跑真 LLM ReAct）②G1 只读库 + 真值数据（收紧 response.contains 到真编号/金额/原文）。trajectory/串行/诚实性断言不依赖真值，拿到 API key 即可先跑路由与串行。
 
 ## 九维度
 

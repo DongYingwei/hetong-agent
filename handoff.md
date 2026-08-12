@@ -21,6 +21,7 @@
 | **T05** schema skill 重写 | ✅ | `jinguan-qa/skills/jinguan-schema/README.md` | 24 列对齐 DDL·JOIN 明细表·grep 校验通过 |
 | **T06** sql_query 裸 SQL + assertReadOnly | 🟢 构建完成 | `jinguan-qa/src/{sql_query,assertReadOnly}.ts` + `coremind.yaml` | 18 vitest 绿·tsc 通过·端到端 eval 待 G1 |
 | **T07** vector_search 两阶段+双形态 | ✅ | `jinguan-qa/src/{vector_search,vectorClients}.ts` | 28 vitest 绿（含真 embed+Milvus+rerank 集成） |
+| **T08** RAG 路由+出处+单合同锁定 | 🟢 构建完成 | `coremind.yaml` systemPrompt + `evals/scenarios.yaml` | 11 场景 schema 校验通过·端到端 eval 待 API key+G1 |
 
 **全套 40 测试全绿**（`cd jinguan-parse && python3 -m pytest tests/`）。
 
@@ -59,9 +60,9 @@ jinguan-qa/            ← 查询侧 TS（未动，T05+ 才碰）
 
 ### 下一步选项
 
-1. 转 T08（RAG 路由：systemPrompt 完整版 + 三路径引导 + 带出处生成；集成 T06+T07 输出契约）
-2. 转 T10（Koa 网关适配 PG + CoreMind 代理，独立支线）
-3. 提供 **G1 只读连接串** → 跑 T06/T08 端到端 eval（结构化+语义子集）验真实链路
+1. 转 T09（eval gate：跑通 scenarios 全绿，需 DEEPSEEK_API_KEY + G1 真值）或 T10（Koa 网关，独立支线）
+2. 转 T11（前端接真实 CoreMind API，需 T10 网关先通）
+3. 提供 **DEEPSEEK_API_KEY + G1 只读串/真值** → 跑 T06/T08 端到端 eval 验真实链路
 4. 已提交至内网 GitLab `origin`（http://221.178.153.117:62000/weidongying/jingxiaoguan.git）；后续成果按需增量 commit
 
 ⚠️ **GitHub Issues 仍未发**（无 gh/token + 待用户授权）。所有工单仍是 `.scratch/jinguan-retrieval/issues/01–11-*.md` 本地 markdown（T01/02/03/04 已在其中标进度）。
