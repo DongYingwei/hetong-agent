@@ -1,0 +1,13 @@
+# 解析侧运行时依赖（评测确认 2026-08-12，遵循「有开源不自研」）
+httpx>=0.28              # MinerU HTTP 调用（本机已装）
+openai>=1.40            # DeepSeek（OpenAI 兼容端点）
+instructor>=1.9         # Pydantic 结构化抽取 + 自动重试
+pyahocorasick>=2.1      # 段内 60 词 Aho-Corasick 精确匹配
+pydantic>=2.10          # 数据模型（本机已装）
+pydantic-settings>=2.10 # .env 类型化配置（本机已装）
+python-dotenv>=1.0      # .env 加载（本机已装）
+psycopg[binary]>=3.2      # PG 落库（官方 v3 驱动）
+fastapi>=0.111           # HTTP 上传入口（本机已装）
+uvicorn>=0.30            # ASGI 服务器（本机已装）
+python-multipart>=0.0.9  # FastAPI multipart 上传
+pymilvus>=2.4            # Milvus 写入（官方 SDK）

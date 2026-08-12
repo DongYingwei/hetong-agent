@@ -1,0 +1,559 @@
+import ExcelJS from 'exceljs';
+
+export interface ExportContractRow {
+  contract_no?: string;
+  no?: string;
+  customer_name?: string;
+  customerName?: string;
+  contract_name?: string;
+  name?: string;
+  assessment_line?: string;
+  bid_no?: string;
+  main_contract_no?: string;
+  framework_short_name?: string;
+  customer_contract_no?: string;
+  signing_entity?: string;
+  contract_type?: string | number;
+  sign_date?: string;
+  start_date?: string;
+  end_date?: string;
+  amount_attr?: string;
+  amount?: string | number;
+  tax_rate?: string;
+  settlement_terms?: string;
+  has_post_assessment?: string;
+  deposit_amount?: string;
+  deposit_refund_condition?: string;
+  arbitration_mode?: string;
+  authorizer?: string;
+  contract_status?: string | number;
+  warning_status?: string | number;
+  service_content?: string;
+  tech_requirements?: string;
+  job_description?: string;
+  personnel_requirements?: string;
+  [key: string]: any;
+}
+
+export interface ExportOrderRow {
+  project_no?: string;
+  project_name?: string;
+  detail_project_no?: string;
+  order_no?: string;
+  no?: string;
+  customer_order_no?: string;
+  order_name?: string;
+  name?: string;
+  contract_no?: string;
+  customer_name?: string;
+  assessment_line?: string;
+  customer_line?: string;
+  customer_type?: string;
+  settlement_type?: string;
+  order_type?: string;
+  order_attr?: string;
+  salesperson?: string;
+  customer_contract_no?: string;
+  customer_service_target?: string;
+  customer_pm?: string;
+  customer_order_name?: string;
+  created_date?: string;
+  accepted_date?: string;
+  start_date?: string;
+  end_date?: string;
+  est_invoice_date?: string;
+  order_status?: string;
+  tax_rate?: number | string;
+  amount?: number | string;
+  amount_ex_tax?: number | string;
+  detail_order_no?: string;
+  customer_detail_order_no?: string;
+  redemption_days?: number | string;
+  is_last_order?: string;
+  detail_amount_ex_tax?: number | string;
+  deduct_amount?: number | string;
+  deduct_amount_ex_tax?: number | string;
+  stop_invoice_amount?: number | string;
+  stop_invoice_amount_ex_tax?: number | string;
+  confirmed_income_amount?: number | string;
+  confirmed_income_amount_ex_tax?: number | string;
+  unconfirmed_income_amount?: number | string;
+  unconfirmed_income_amount_ex_tax?: number | string;
+  income_confirmed?: number | string;
+  invoiced_amount?: number | string;
+  invoiced_amount_ex_tax?: number | string;
+  returned_amount?: number | string;
+  returned_amount_ex_tax?: number | string;
+  invoiced_unreturned_amount?: number | string;
+  invoiced_unreturned_amount_ex_tax?: number | string;
+  region?: string;
+  province?: string;
+  city?: string;
+  delivery_list?: string;
+  has_attachment?: string;
+  latest_attachment_time?: string;
+  attachment_count?: number | string;
+  has_eml?: string;
+  maker?: string;
+  make_time?: string;
+  detail_maker?: string;
+  detail_make_time?: string;
+  updater?: string;
+  update_time?: string;
+  auditor?: string;
+  audit_time?: string;
+  service_content?: string;
+  tech_requirements?: string;
+  job_description?: string;
+  personnel_requirements?: string;
+  [key: string]: any;
+}
+
+const borderThin: Partial<ExcelJS.Borders> = {
+  top: { style: 'thin', color: { argb: 'FFD9D9D9' } },
+  left: { style: 'thin', color: { argb: 'FFD9D9D9' } },
+  bottom: { style: 'thin', color: { argb: 'FFD9D9D9' } },
+  right: { style: 'thin', color: { argb: 'FFD9D9D9' } },
+};
+
+/**
+ * 导出合同台账 Excel (保持不变)
+ */
+export async function exportFullContractLedgerExcel(dataList: ExportContractRow[], fileNamePrefix: string = '合同台账全量明细') {
+  if (!dataList || dataList.length === 0) return;
+
+  const workbook = new ExcelJS.Workbook();
+  const ws = workbook.addWorksheet('合同台账明细');
+
+  ws.columns = [
+    { width: 14 }, { width: 22 }, { width: 26 }, { width: 26 }, { width: 12 },
+    { width: 16 }, { width: 16 }, { width: 22 }, { width: 22 }, { width: 18 },
+    { width: 14 }, { width: 14 }, { width: 14 }, { width: 14 }, { width: 16 },
+    { width: 18 }, { width: 10 }, { width: 32 }, { width: 16 }, { width: 18 },
+    { width: 32 }, { width: 18 }, { width: 12 }, { width: 14 }, { width: 18 },
+    { width: 32 }, { width: 32 }, { width: 24 }, { width: 32 },
+  ];
+
+  const row1 = ws.addRow(['展示页信息\n最后来自\n台账项目', '展示页', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', 'AI', '', '', '']);
+  row1.height = 36;
+  ws.mergeCells('A1:A3');
+  ws.mergeCells('B1:Y1');
+  ws.mergeCells('Z1:AC1');
+
+  const cellA1 = ws.getCell('A1');
+  cellA1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF002060' } };
+  cellA1.font = { name: '微软雅黑', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+  cellA1.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+
+  const cellB1 = ws.getCell('B1');
+  cellB1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+  cellB1.font = { name: '微软雅黑', size: 10, bold: true };
+  cellB1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+  const cellZ1 = ws.getCell('Z1');
+  cellZ1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+  cellZ1.font = { name: '微软雅黑', size: 10, bold: true, color: { argb: 'FF000000' } };
+  cellZ1.alignment = { vertical: 'middle', horizontal: 'center' };
+
+  const row2Values = ['', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'EPMS', 'AI', 'AI', 'AI', 'AI'];
+  const row2 = ws.addRow(row2Values);
+  row2.height = 24;
+
+  for (let c = 2; c <= 25; c++) {
+    const cell = row2.getCell(c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+    cell.font = { name: '微软雅黑', size: 9, bold: true };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  }
+  for (let c = 26; c <= 29; c++) {
+    const cell = row2.getCell(c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+    cell.font = { name: '微软雅黑', size: 9, bold: true };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+  }
+
+  const row3Values = [
+    '', '合同号', '客户名称', '合同名称', '考核线', '中标编号', '关联主合同号', '框架简称', '客方合同号',
+    '签约法人体', '合同类型', '签约时间', '开始时间', '结束时间', '金额属性', '合同金额(含税)', '税率',
+    '结算条款', '是否涉及后评估', '履约保证金金额', '履约保证金退还条件', '仲裁方式', '授权人',
+    '合同状态', '合同断档预警', '服务内容', '技术要求', '岗位说明', '人员需求'
+  ];
+  const row3 = ws.addRow(row3Values);
+  row3.height = 26;
+
+  for (let c = 2; c <= 25; c++) {
+    const cell = row3.getCell(c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B0F0' } };
+    cell.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = borderThin;
+  }
+  for (let c = 26; c <= 29; c++) {
+    const cell = row3.getCell(c);
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+    cell.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FF000000' } };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    cell.border = borderThin;
+  }
+
+  dataList.forEach((item, idx) => {
+    const rowValues = [
+      '样本',
+      item.contract_no || item.no || '—',
+      item.customer_name || item.customerName || '—',
+      item.contract_name || item.name || '—',
+      item.assessment_line || '信息技术',
+      item.bid_no || '—',
+      item.main_contract_no || '—',
+      item.framework_short_name || '—',
+      item.customer_contract_no || '—',
+      item.signing_entity || '南京华苏科技有限公司',
+      item.contract_type || '框架协议',
+      item.sign_date || '2026-06-15',
+      item.start_date || '2026-06-15',
+      item.end_date || '2027-06-15',
+      item.amount_attr || '含税',
+      item.amount || '0',
+      item.tax_rate || '6%',
+      item.settlement_terms || '按月结算',
+      item.has_post_assessment || '否',
+      item.deposit_amount || '0',
+      item.deposit_refund_condition || '无',
+      item.arbitration_mode || '对方所在地法院',
+      item.authorizer || '张三',
+      item.contract_status || '已签约',
+      item.warning_status || '正常',
+      item.service_content || '—',
+      item.tech_requirements || '—',
+      item.job_description || '—',
+      item.personnel_requirements || '—'
+    ];
+
+    const dataRow = ws.addRow(rowValues);
+    dataRow.height = 22;
+
+    const cellA = dataRow.getCell(1);
+    cellA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF002060' } };
+    cellA.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    cellA.alignment = { vertical: 'middle', horizontal: 'center' };
+    cellA.border = borderThin;
+
+    for (let c = 2; c <= 29; c++) {
+      const cell = dataRow.getCell(c);
+      cell.border = borderThin;
+      cell.font = { name: '微软雅黑', size: 9 };
+      cell.alignment = { vertical: 'middle', horizontal: (c === 16 ? 'right' : 'left') };
+    }
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const dateStr = new Date().toISOString().substring(0, 10);
+  link.setAttribute('download', `${fileNamePrefix}_${dateStr}.xlsx`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+/**
+ * 1:1 还原 5 截图拼接样式的订单台账全量 Excel 导出 (exportFullOrderLedgerExcel)
+ */
+export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fileNamePrefix: string = '订单台账全量明细') {
+  if (!dataList || dataList.length === 0) return;
+
+  const workbook = new ExcelJS.Workbook();
+  const ws = workbook.addWorksheet('订单台账明细');
+
+  // 列标题与宽度设置
+  const headers = [
+    { title: '项目编号', width: 16 },
+    { title: '项目名称', width: 34 },
+    { title: '明细项目编号', width: 18 },
+    { title: '订单编号', width: 22 },
+    { title: '客方订单号', width: 20 },
+    { title: '订单名称', width: 36 },
+    { title: '合同编号', width: 18 },
+    { title: '客户名称', width: 28 },
+    { title: '考核线', width: 14 }, // Yellow
+    { title: '客户线', width: 12 },
+    { title: '客户类型', width: 12 },
+    { title: '结算方式', width: 12 },
+    { title: '订单类型', width: 12 },
+    { title: '订单属性', width: 12 },
+    { title: '业务员', width: 12 },
+    { title: '客方合同编号', width: 20 },
+    { title: '客方服务对象', width: 16 },
+    { title: '客方项目经理', width: 16 },
+    { title: '客方订单名称', width: 24 },
+    { title: '生成日期', width: 14 },
+    { title: '接受日期', width: 14 },
+    { title: '订单开始日期', width: 14 },
+    { title: '订单结束日期', width: 14 },
+    { title: '预计开票日期', width: 14 },
+    { title: '订单状态', width: 12 },
+    { title: '订单税率(%)', width: 12 },
+    { title: '订单含税总额', width: 16 },
+    { title: '订单不含税总额', width: 16 },
+    { title: '订单明细单号', width: 24 },
+    { title: '客方订单明细单号', width: 22 },
+    { title: '赎期(天)', width: 10 },
+    { title: '是否末单', width: 10 },
+    { title: '明细税率(%)', width: 12 },
+    { title: '明细含税金额', width: 16 },
+    { title: '明细不含税金额', width: 16 },
+    { title: '扣款含税金额', width: 14 },
+    { title: '扣款不含税金额', width: 14 },
+    { title: '停止开票含税金额', width: 16 },
+    { title: '停止开票不含税金额', width: 16 },
+    { title: '确认收入含税总额', width: 16 },
+    { title: '确认收入不含税总额', width: 16 },
+    { title: '未确认收入含税金额', width: 16 },
+    { title: '未确认收入不含税金额', width: 16 },
+    { title: '已开票含税总额', width: 16 },
+    { title: '已开票不含税总额', width: 16 },
+    { title: '已回款含税总额', width: 16 },
+    { title: '已回款不含税总额', width: 16 },
+    { title: '已开票未回款含税金额', width: 18 },
+    { title: '已开票未回款不含税金额', width: 18 },
+    { title: '区域', width: 10 },
+    { title: '省份', width: 10 },
+    { title: '地市', width: 10 },
+    { title: '交付人员名单', width: 18 },
+    { title: '收入确认标记', width: 14 },
+    { title: '制单人', width: 12 },
+    { title: '制单时间', width: 20 },
+    { title: '明细制单人', width: 12 },
+    { title: '明细制单时间', width: 20 },
+    { title: '更新人', width: 12 },
+    { title: '更新时间', width: 20 },
+    { title: '审核人', width: 12 },
+    { title: '审核时间', width: 20 },
+    { title: '附件', width: 10 },
+    { title: '最新附件上传时间', width: 20 },
+    { title: '附件数量', width: 12 }, // Yellow
+    { title: '含eml附件', width: 12 }, // Yellow
+    { title: '服务内容', width: 20 }, // Yellow AI
+    { title: '技术要求', width: 20 }, // Yellow AI
+    { title: '岗位说明', width: 20 }, // Yellow AI
+    { title: '人员需求', width: 20 }, // Yellow AI
+  ];
+
+  // 列宽设置
+  ws.columns = [{ width: 16 }, ...headers.map((h) => ({ width: h.width }))];
+
+  // 1. 第一行：分组大表头 (Row 1)
+  const row1Values = ['展示页信息\n最后来自\n台账项目'];
+  for (let i = 0; i < headers.length; i++) {
+    const colIdx = i + 2; // Column 2 is B
+    if (colIdx >= 2 && colIdx <= 9) { // B..I
+      row1Values.push(colIdx === 2 ? '展示页' : '');
+    } else if (colIdx === 10) { // J (考核线)
+      row1Values.push('根据项目编号匹配');
+    } else if (colIdx >= 11 && colIdx <= 64) { // K..BL
+      row1Values.push(colIdx === 11 ? '展示页' : '');
+    } else if (colIdx >= 65 && colIdx <= 66) { // BM..BN
+      row1Values.push(colIdx === 65 ? '展示页' : '');
+    } else if (colIdx >= 67 && colIdx <= 70) { // BP..BS
+      row1Values.push(colIdx === 67 ? 'AI' : '');
+    } else {
+      row1Values.push('');
+    }
+  }
+
+  const row1 = ws.addRow(row1Values);
+  row1.height = 36;
+
+  ws.mergeCells('A1:A3');
+  ws.mergeCells('B1:I1');
+  ws.mergeCells('K1:BL1');
+  ws.mergeCells('BM1:BN1');
+  ws.mergeCells('BP1:BS1');
+
+  // 样式设置 Row 1
+  const cellA1 = ws.getCell('A1');
+  cellA1.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF002060' } };
+  cellA1.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+  cellA1.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+  cellA1.border = borderThin;
+
+  ws.getCell('B1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+  ws.getCell('B1').font = { name: '微软雅黑', size: 9, bold: true };
+  ws.getCell('B1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+  ws.getCell('J1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+  ws.getCell('J1').font = { name: '微软雅黑', size: 9, bold: true };
+  ws.getCell('J1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+  ws.getCell('K1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+  ws.getCell('K1').font = { name: '微软雅黑', size: 9, bold: true };
+  ws.getCell('K1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+  ws.getCell('BM1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+  ws.getCell('BM1').font = { name: '微软雅黑', size: 9, bold: true };
+  ws.getCell('BM1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+  ws.getCell('BP1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+  ws.getCell('BP1').font = { name: '微软雅黑', size: 9, bold: true };
+  ws.getCell('BP1').alignment = { vertical: 'middle', horizontal: 'center' };
+
+  // 2. 第二行：系统来源大表头 EPMS / AI (Row 2)
+  const row2Values = [''];
+  for (let i = 0; i < headers.length; i++) {
+    const colIdx = i + 2;
+    if (colIdx >= 65 && colIdx <= 70) {
+      row2Values.push('AI');
+    } else {
+      row2Values.push('EPMS');
+    }
+  }
+  const row2 = ws.addRow(row2Values);
+  row2.height = 24;
+
+  for (let i = 0; i < headers.length; i++) {
+    const colIdx = i + 2;
+    const cell = row2.getCell(colIdx);
+    cell.border = borderThin;
+    cell.font = { name: '微软雅黑', size: 9, bold: true };
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    if (colIdx >= 65 && colIdx <= 70) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+    } else {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
+    }
+  }
+
+  // 3. 第三行：具体字段列名表头 (Row 3)
+  const row3Values = ['', ...headers.map((h) => h.title)];
+  const row3 = ws.addRow(row3Values);
+  row3.height = 26;
+
+  const yellowCols = [10, 65, 66, 67, 68, 69, 70]; // J, BM, BN, BO, BP, BQ, BR, BS (1-based col index)
+
+  for (let i = 0; i < headers.length; i++) {
+    const colIdx = i + 2;
+    const cell = row3.getCell(colIdx);
+    cell.border = borderThin;
+    cell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+    if (yellowCols.includes(colIdx)) {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
+      cell.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FF000000' } };
+    } else {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF00B0F0' } };
+      cell.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    }
+  }
+
+  // 4. 填充数据行 (Row 4 onwards)
+  dataList.forEach((item) => {
+    const rowVal = [
+      '样本',
+      item.project_no || '—',
+      item.project_name || '—',
+      item.detail_project_no || '—',
+      item.order_no || item.no || '—',
+      item.customer_order_no || '—',
+      item.order_name || item.name || '—',
+      item.contract_no || '—',
+      item.customer_name || item.customer || '—',
+      item.assessment_line || '软件',
+      item.customer_line || '软件',
+      item.customer_type || '无',
+      item.settlement_type || '—',
+      item.order_type || 'ARP',
+      item.order_attr || 'JS',
+      item.salesperson || '—',
+      item.customer_contract_no || '—',
+      item.customer_service_target || '—',
+      item.customer_pm || '—',
+      item.customer_order_name || '—',
+      item.created_date || '2026-07-23',
+      item.accepted_date || '2026-07-23',
+      item.start_date || '2026-04-01',
+      item.end_date || '2026-06-30',
+      item.est_invoice_date || '2026-12-27',
+      item.order_status || '执行中',
+      item.tax_rate ?? 6,
+      item.amount ?? 0,
+      item.amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
+      item.detail_order_no || (item.order_no ? item.order_no + '-1' : '—'),
+      item.customer_detail_order_no || '—',
+      item.redemption_days ?? 0,
+      item.is_last_order || '否',
+      item.tax_rate ?? 6,
+      item.amount ?? 0,
+      item.detail_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
+      item.deduct_amount ?? 0,
+      item.deduct_amount_ex_tax ?? 0,
+      item.stop_invoice_amount ?? 0,
+      item.stop_invoice_amount_ex_tax ?? 0,
+      item.confirmed_income_amount ?? 0,
+      item.confirmed_income_amount_ex_tax ?? 0,
+      item.unconfirmed_income_amount ?? (item.amount ?? 0),
+      item.unconfirmed_income_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
+      item.invoiced_amount ?? (item.amount ?? 0),
+      item.invoiced_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
+      item.returned_amount ?? 0,
+      item.returned_amount_ex_tax ?? 0,
+      item.invoiced_unreturned_amount ?? (item.amount ?? 0),
+      item.invoiced_unreturned_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
+      item.region || '—',
+      item.province || '—',
+      item.city || '—',
+      item.delivery_list || '—',
+      item.income_confirmed === 1 ? '已确认' : '未确认',
+      item.maker || '陈心瑜B',
+      item.make_time || '2026-07-23 14:55:38',
+      item.detail_maker || '陈心瑜B',
+      item.detail_make_time || '2026-07-23 14:55:38',
+      item.updater || '陈心瑜B',
+      item.update_time || '2026-07-23 14:56:08',
+      item.auditor || '陈心瑜B',
+      item.audit_time || '2026-07-23 14:56:08',
+      item.has_attachment || '有',
+      item.latest_attachment_time || '2026-07-23 14:56:03',
+      item.attachment_count ?? 3,
+      item.has_eml || '是',
+      item.service_content || '—',
+      item.tech_requirements || '—',
+      item.job_description || '—',
+      item.personnel_requirements || '—',
+    ];
+
+    const dataRow = ws.addRow(rowVal);
+    dataRow.height = 22;
+
+    const cellA = dataRow.getCell(1);
+    cellA.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF002060' } };
+    cellA.font = { name: '微软雅黑', size: 9, bold: true, color: { argb: 'FFFFFFFF' } };
+    cellA.alignment = { vertical: 'middle', horizontal: 'center' };
+    cellA.border = borderThin;
+
+    for (let c = 2; c <= rowVal.length; c++) {
+      const cell = dataRow.getCell(c);
+      cell.border = borderThin;
+      cell.font = { name: '微软雅黑', size: 9 };
+      const val = rowVal[c - 1];
+      const isNum = typeof val === 'number';
+      cell.alignment = { vertical: 'middle', horizontal: isNum ? 'right' : 'left' };
+      if (isNum && typeof val === 'number' && val > 100) {
+        cell.numFmt = '#,##0.00';
+      }
+    }
+  });
+
+  const buffer = await workbook.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const dateStr = new Date().toISOString().substring(0, 10);
+  link.setAttribute('download', `${fileNamePrefix}_${dateStr}.xlsx`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}

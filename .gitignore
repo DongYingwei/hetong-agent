@@ -1,0 +1,35 @@
+# ── 密钥/环境 ──
+.env
+.env.*
+!.env.example
+
+# ── 大数据文件（合同 PDF/zip，不入 git；本地保留）──
+data/pdf/
+data/pdf-zip/
+data/md-file/
+data/test-example/
+demo/*.pdf
+jinguan-qa/demo/*.pdf
+jingxiaoguan-master/backend/uploads/
+
+# ── 依赖/构建产物 ──
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# ── Python 缓存 ──
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# ── CoreMind 会话/运行时 ──
+jinguan-qa/sessions/
+*.log
+
+# ── 编辑器/系统 ──
+.DS_Store
+.idea/
+.vscode/

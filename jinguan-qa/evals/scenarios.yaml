@@ -1,0 +1,154 @@
+schemaVersion: 2
+
+# ─────────────────────────────────────────────────────────────
+# 评测集 = 你 >90% 准确率的证据基线。用 `coremind eval coremind.yaml` 重复跑。
+# 这是替代 Loop 的 Self-Correction：跑不过 → 改 skill/systemPrompt → 再跑。
+#
+# 前置：response grader 的 contains 断言依赖真实数据的已知答案。
+# 请在你的测试库里放入固定的合同样本，把下面 <期望编号>/<期望金额> 换成真值。
+#
+# 关键断言两类：
+#   - trajectory：证明路由正确（纯结构化只调 sql_query；语义提问先向量后 SQL）
+#   - response：证明输出含正确数字 + 年份假设声明
+# ─────────────────────────────────────────────────────────────
+scenarios:
+  # ① 标准三问 —— 纯结构化，必须只调 sql_query，不得调 vector_search
+  - id: ai-contracts-count-and-sum
+    input: 服务内容包含AI的合同有多少，提供编号和总金额
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: only-sql
+        type: trajectory
+        sequence:
+          - tool: sql_query
+        forbiddenTools: [vector_search, bash, write, edit]
+      - id: has-numbers
+        type: response
+        contains: ["编号", "总金额"]        # TODO: 补上已知真值，如 "HT-2026-0007"、金额
+
+  - id: ops-contracts-2026
+    input: 2026年签订的运维合同有哪些
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: only-sql
+        type: trajectory
+        sequence:
+          - tool: sql_query
+        forbiddenTools: [vector_search]
+      - id: lists-contracts
+        type: response
+        contains: ["运维"]                  # TODO: 补上已知编号
+
+  - id: power-ai-amount
+    input: 电力行业含AI关键词的合同金额是多少
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: only-sql
+        type: trajectory
+        sequence:
+          - tool: sql_query
+        forbiddenTools: [vector_search]
+      - id: has-amount
+        type: response
+        contains: ["元"]                    # TODO: 补上已知金额数字
+
+  # ② 时间词 —— 验“未指定年份默认当前年 + 声明假设”
+  - id: first-half-no-year
+    input: 前两季度签订的合同总金额是多少
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: only-sql
+        type: trajectory
+        sequence:
+          - tool: sql_query
+        forbiddenTools: [vector_search]
+      - id: declares-assumption
+        type: response
+        contains: ["假设"]                  # 输出必须声明按哪一年统计
+
+  - id: third-quarter
+    input: 第三季度签订的合同有多少
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: only-sql
+        type: trajectory
+        sequence:
+          - tool: sql_query
+        forbiddenTools: [vector_search]
+
+  # ③ 语义提问 —— 必须先 vector_search 再 sql_query（联动串行）
+  - id: semantic-similar
+    input: 帮我找和智能巡检类似的合同，统计一下总金额
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: vector-then-sql
+        type: trajectory
+        sequence:
+          - tool: vector_search          # 必须先出现
+          - tool: sql_query              # 再出现
+        forbiddenTools: [bash, write, edit]
+
+  # ④ 空结果 —— 不得编造
+  - id: empty-result
+    input: 2099年签订的采购合同有哪些
+    repetitions: 2
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: says-empty
+        type: response
+        contains: ["未查询到"]
+        notContains: ["HT-"]              # 不得凭空给出编号
+
+  # ⑤ 越界提问（表结构不支撑）—— 必须诚实拒答，不调工具、不编数字
+  #    这是防“为了显得全能而编造”的关键场景，直接对应你的绩效风险。
+  - id: out-of-scope-field
+    input: 这些合同的付款进度和履约状态怎么样？
+    repetitions: 3
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: no-tool-call            # 越界问题不应触发任何查询
+        type: trajectory
+        sequence: []
+        forbiddenTools: [sql_query, vector_search, bash, write, edit]
+      - id: refuses-honestly
+        type: response
+        contains: ["超出", "范围"]   # 明确说超出可查询范围
+        notContains: ["HT-", "元"]   # 不得给出编造的编号或金额
+
+  # ⑥ 非合同查询（闲聊/越域）—— 说明只负责合同库查询
+  - id: out-of-domain
+    input: 帮我写一段 Python 快速排序代码
+    repetitions: 2
+    graders:
+      - id: outcome
+        type: outcome
+        status: succeeded
+      - id: no-tool-call
+        type: trajectory
+        sequence: []
+        forbiddenTools: [sql_query, vector_search, bash, write, edit]
+      - id: declines
+        type: response
+        contains: ["合同"]           # 引导回合同查询职责
