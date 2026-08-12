@@ -52,6 +52,7 @@ class VectorStore(Protocol):
     def ensure_collection(self) -> None: ...
     def upsert_chunks(self, rows: list[dict]) -> int: ...
     def delete_by_contract(self, contract_id: int) -> None: ...
+    def update_metadata_by_contract(self, contract_id: int, patch: dict) -> int: ...
 
 
 class MilvusVectorStore:
@@ -102,6 +103,32 @@ class MilvusVectorStore:
         """原文更新/重建时按合同清旧片段（§7.6.5，切片3 会用）。"""
         client = self._c()
         client.delete(collection_name=COLLECTION, filter=f"contract_id == {contract_id}")
+
+    _META_FIELDS = ("contract_no", "field", "module_category")
+
+    def update_metadata_by_contract(self, contract_id: int, patch: dict) -> int:
+        """只改标签/关键字：更新该合同全部片段的 metadata，不重算 embedding（§7.6.5）。
+
+        Milvus 无「就地改标量列」原语——取回该合同现有行（含向量），套用 patch 后
+        原样 upsert（auto_id 主键 → insert 即 upsert 语义按 id）。仅允许改 metadata 字段。
+        返回受影响片段数。
+        """
+        bad = set(patch) - set(self._META_FIELDS)
+        if bad:
+            raise ValueError(f"update_metadata 仅可改 metadata 字段，非法：{sorted(bad)}")
+        client = self._c()
+        rows = client.query(
+            collection_name=COLLECTION,
+            filter=f"contract_id == {contract_id}",
+            output_fields=["id", "vector", "contract_id", "contract_no",
+                           "field", "module_category", "content"],
+        )
+        if not rows:
+            return 0
+        for r in rows:
+            r.update(patch)
+        client.upsert(collection_name=COLLECTION, data=rows)
+        return len(rows)
 
 
 # ─────────────────────────────────────────────────────────────

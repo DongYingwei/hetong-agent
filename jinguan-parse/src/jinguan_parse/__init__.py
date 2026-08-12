@@ -14,9 +14,12 @@ from .extract import (
 from .keywords import KeywordMatcher, KeywordHit
 from .schema import ContractExtraction
 from .persist import insert_draft
-from .confirm import confirm_draft, DraftNotFound
+from .confirm import confirm_draft, DraftNotFound, md_md5
 from .ingest import (
     ingest_one, ingest_batch, file_sha256, IngestDeps, IngestResult,
+)
+from .sync import (
+    sync_source_update, sync_label_update, SyncResult, ContractNotFound,
 )
 from .vector import (
     vectorize_chunks, vectorize_confirmed_contract, markdown_to_segments,
@@ -38,6 +41,11 @@ __all__ = [
     "insert_draft",
     "confirm_draft",
     "DraftNotFound",
+    "md_md5",
+    "sync_source_update",
+    "sync_label_update",
+    "SyncResult",
+    "ContractNotFound",
     "ingest_one",
     "ingest_batch",
     "file_sha256",

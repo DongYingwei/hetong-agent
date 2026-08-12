@@ -4,12 +4,12 @@
 
 **Blocked by:** T03(有草稿数据才能核对入正式库)
 
-**Status:** 🟡 in-progress（切片1 核对→正式库 ✅ 真 PG 4/4 绿；向量/同步待 G2/G5）· **HITL**
+**Status:** ✅ done（四切片全完成；G5 已拍板 2026-08-12）· **HITL**
 
 > **切片进度**：
 > - ✅ **切片1 · 核对→正式库**（`confirm.py`）：草稿(confirmed=0) → 写 contracts(confirmed=1, confirmed_by/at + _ai_raw 搬运) + module_hits JSONB 展开成 contract_module_hits 行 + 支持人工 overrides + 删草稿防重复核对。真 PG 集成测试 4/4 绿。
 > - ✅ **切片2 · 片段持久化 + 建向量**（`vector.py`）：Qwen3-Embedding(OpenAI 兼容 vLLM,**真调确认 2560 维**) + Milvus collection(pymilvus,metadata 四字段+COSINE) + markdown→切片(复用T02)→建向量。**真 Milvus(v2.4.5) + 真 embedding 集成测试通过**。草稿加 mineru_md 列存全文,核对后据此切片(仅正式库,坑9)。开源:openai+pymilvus(评测确认);**LlamaIndex 评估结论=切片2不用,留 T07/T08 候选**。
-> - ⬜ 切片3 · 片段同步（需 G5 机制拍板：事件/批量/版本号）
+> - ✅ **切片3 · 片段同步**（`sync.py` + `vector.update_metadata_by_contract` + api `/sync`）：**G5 拍板=显式函数调用**（`sync_source_update`/`sync_label_update` + `/sync/{id}/source`、`/sync/{id}/labels` 端点，不引入事件/MQ）。**原文重传比 MD5**：同则 unchanged 跳过，异则更新正式库 md/md5 + `delete_by_contract` + 用新全文重切重建；**只改标签**：仅更新 Milvus metadata（contract_no/field/module_category），不重算 embedding。DDL `002` 给正式库加 `mineru_md`+`mineru_md5`（核对时从草稿搬运，`confirm.py` 已接）。fake 向量 + 真临时 PG 6/6 绿。
 > - ✅ **切片4 · 批处理 + HTTP 入口 + 指纹去重**（`ingest.py` + `api.py`）：SHA-256 流式指纹去重、断点续跑、单份失败不阻断整批(§8)、FastAPI `/parse` 单份上传入口(共用 ingest_one 核心)。真 PG 6/6 绿。开源:FastAPI(评测确认,已装)。
 >
 > **设计决策(需留意)**：核对后**删除草稿行**（草稿表 CHECK(confirmed=0) 无法就地标记；删除防重复核对，代价是草稿审计留痕丢失——如需审计可后续改为归档表）。

@@ -20,6 +20,7 @@ _SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
 _ROOT = pathlib.Path(__file__).resolve().parents[2]
 _DDL = _ROOT / "contracts-db" / "migrations" / "001_contracts.sql"
+_DDL2 = _ROOT / "contracts-db" / "migrations" / "002_contract_md_sync.sql"
 _SEED = _ROOT / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -66,6 +67,7 @@ def pg_conn():
         assert conn is not None
         with conn.cursor() as cur:
             cur.execute(_DDL.read_text(encoding="utf-8"))
+            cur.execute(_DDL2.read_text(encoding="utf-8"))
             cur.execute(_SEED.read_text(encoding="utf-8"))
         conn.commit()
         yield conn
@@ -118,6 +120,13 @@ def test_confirm_moves_draft_to_formal(pg_conn):
         # 草稿已删（避免重复核对）
         cur.execute("SELECT count(*) FROM contracts_draft WHERE id=%s", (draft_id,))
         assert cur.fetchone()[0] == 0
+
+        # 全文 md + md5 搬运到正式库（切片3 同步比对/重建依赖）
+        cur.execute("SELECT mineru_md, mineru_md5 FROM contracts WHERE id=%s", (cid,))
+        md, md5 = cur.fetchone()
+        import hashlib
+        assert md and "服务内容" in md
+        assert md5 == hashlib.md5(md.encode("utf-8")).hexdigest()
 
 
 def test_confirm_applies_overrides(pg_conn):

@@ -1,7 +1,7 @@
 # 经小管查询智能体 · 交接文档
 
 > 写给下一个完全无上下文的新会话。读完这份就能接着干，不用从头探索。
-> 最后更新：2026-08-12 · 已从设计阶段进入**实现阶段**：T01/T02/T03 完成，T04 三/四切片完成。
+> 最后更新：2026-08-12 · 已从设计阶段进入**实现阶段**：T01/T02/T03 完成，**T04 四切片全完成（G5 已拍板）**。
 
 ---
 
@@ -17,12 +17,16 @@
 | **T04-切片1** 核对→正式库 | ✅ | `confirm.py` | 真 PG 4/4 绿 |
 | **T04-切片2** 建向量 | ✅ | `vector.py` | 真 Milvus v2.4.5 + 真 embedding 集成绿 |
 | **T04-切片4** 批处理+HTTP+指纹 | ✅ | `ingest.py/api.py` | 真 PG 6/6 绿 |
+| **T04-切片3** 片段同步 | ✅ | `sync.py/vector.py/api.py` + DDL `002` | fake 向量+真 PG 6/6 绿 |
 
-**全套 34 测试全绿**（`cd jinguan-parse && python3 -m pytest tests/`）。
+**全套 40 测试全绿**（`cd jinguan-parse && python3 -m pytest tests/`）。
 
-### 唯一剩余待办：T04-切片3 片段同步
+### T04 已收尾 —— G5 拍板结论（2026-08-12）
 
-卡 **G5 机制拍板**（用户控制项）：标签更新只改 metadata / 原文更新重建向量 / 按模块增量；触发方式选事件/批量/版本号。定了就能收尾 T04。
+- **触发方式=显式函数调用**（不引入事件/MQ 基建）：`sync_source_update` / `sync_label_update` + api `/sync/{id}/source`、`/sync/{id}/labels`。谁改数据谁显式调。
+- **原文重传比 MD5**：正式库存 `mineru_md`+`mineru_md5`（DDL `002`，核对时从草稿搬运）。重传比 md5 → 同则 `unchanged` 跳过；异则更新正式库 md/md5 + `delete_by_contract` + 用新全文重切重建向量。
+- **只改标签/关键字**：不重算 embedding，仅 `update_metadata_by_contract` 改 Milvus metadata（限 contract_no/field/module_category）。
+- **T04 四切片全绿，无剩余待办。** 下一步转 T05/T06（查询侧）或 T10（Koa 网关）。
 
 ### 关键决策（本阶段新增，写进代码/ADR）
 
@@ -52,9 +56,9 @@ jinguan-qa/            ← 查询侧 TS（未动，T05+ 才碰）
 
 ### 下一步选项
 
-1. 拍板 G5 → 收尾 T04 切片3（片段同步）
-2. 提交当前成果到 git（Phase1 + T03 + T04 三切片，需用户点头 commit）
-3. 转 T05（schema skill，需按 ADR-0004 声明明细表 JOIN 口径）或 T10（Koa 网关）
+1. 转 T05（schema skill，需按 ADR-0004 声明明细表 JOIN 口径）或 T06（sql_query 裸 SQL）
+2. 转 T10（Koa 网关适配 PG + CoreMind 代理）
+3. 已提交至内网 GitLab `origin`（http://221.178.153.117:62000/weidongying/jingxiaoguan.git）；后续成果按需增量 commit
 
 ⚠️ **GitHub Issues 仍未发**（无 gh/token + 待用户授权）。所有工单仍是 `.scratch/jinguan-retrieval/issues/01–11-*.md` 本地 markdown（T01/02/03/04 已在其中标进度）。
 

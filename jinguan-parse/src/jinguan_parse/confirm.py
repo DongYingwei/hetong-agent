@@ -13,10 +13,18 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import datetime, timezone
 
 from psycopg import Connection
+
+
+def md_md5(markdown: str | None) -> str | None:
+    """MinerU 全文 md 的 MD5（切片3 同步比对用）。None/空 → None。"""
+    if not markdown:
+        return None
+    return hashlib.md5(markdown.encode("utf-8")).hexdigest()
 
 # 正式表 contracts 里从草稿搬运的列（标量 AI 主列 + 手工列 + tag_ai）。
 # 与 contracts_draft / persist._AI_COLS 对齐；日期/金额主列草稿是 NULL（原文在 _ai_raw），照搬。
@@ -64,8 +72,8 @@ def confirm_draft(
     stamp = now or datetime.now(timezone.utc)
 
     with conn.cursor() as cur:
-        # ① 读草稿全行（按列名取）
-        all_cols = _COPY_COLS + _AI_RAW_COLS + ["module_hits"]
+        # ① 读草稿全行（按列名取）；mineru_md 搬运至正式库供切片3 同步比对/重建
+        all_cols = _COPY_COLS + _AI_RAW_COLS + ["module_hits", "mineru_md"]
         cur.execute(
             f"SELECT {', '.join(all_cols)} FROM contracts_draft WHERE id = %s",
             (draft_id,),
@@ -80,9 +88,12 @@ def confirm_draft(
             if k in data:
                 data[k] = v
 
-        # ② 写正式库 contracts（confirmed=1 + 核对留痕）
-        insert_cols = _COPY_COLS + _AI_RAW_COLS + ["confirmed", "confirmed_by", "confirmed_at"]
-        insert_vals = [data[c] for c in _COPY_COLS + _AI_RAW_COLS] + [1, confirmed_by, stamp]
+        # ② 写正式库 contracts（confirmed=1 + 核对留痕 + 全文 md 及其 md5）
+        mineru_md = data["mineru_md"]
+        insert_cols = (_COPY_COLS + _AI_RAW_COLS
+                       + ["confirmed", "confirmed_by", "confirmed_at", "mineru_md", "mineru_md5"])
+        insert_vals = ([data[c] for c in _COPY_COLS + _AI_RAW_COLS]
+                       + [1, confirmed_by, stamp, mineru_md, md_md5(mineru_md)])
         placeholders = ", ".join(["%s"] * len(insert_vals))
         cur.execute(
             f"INSERT INTO contracts ({', '.join(insert_cols)}) "

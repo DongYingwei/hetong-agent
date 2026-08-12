@@ -80,6 +80,7 @@ class FakeVectorStore:
         self.ensured = 0
         self.rows: list[dict] = []
         self.deleted: list[int] = []
+        self.meta_updates: list[tuple[int, dict]] = []
 
     def ensure_collection(self) -> None:
         self.ensured += 1
@@ -90,3 +91,11 @@ class FakeVectorStore:
 
     def delete_by_contract(self, contract_id: int) -> None:
         self.deleted.append(contract_id)
+
+    def update_metadata_by_contract(self, contract_id: int, patch: dict) -> int:
+        # 记录每次 metadata-only 更新；命中 = 当前该合同已存在的片段行
+        hit = [r for r in self.rows if r.get("contract_id") == contract_id]
+        for r in hit:
+            r.update(patch)
+        self.meta_updates.append((contract_id, dict(patch)))
+        return len(hit)
