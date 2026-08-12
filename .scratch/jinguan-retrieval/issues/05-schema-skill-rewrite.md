@@ -4,7 +4,9 @@
 
 **Blocked by:** T01(PG 表在才能对照写 schema)
 
-**Status:** ready-for-agent · **AFK**（据 T01 DDL 派生）
+**Status:** ✅ done（2026-08-12）· **AFK**（据 T01 DDL 派生）
+
+> ✅ **完成**：`skills/jinguan-schema/README.md` 全量重写——只声明列语义（无「说法→条件」固定映射表）；模块过滤声明为 JOIN `contract_module_hits`（标准 JOIN + EXISTS/NOT EXISTS 双例，无 `mod_*_ai` 宽列）；声明 `contract_modules`/`contract_module_hits` 两表关系；金额口径（SUM 带 IS NOT NULL、混口径分组、tax_rate 非数值）、物化时间列语义（sign_half=1=上半年）、长文本仅存在性过滤（不 SELECT 全文回灌，要原文走 RAG）齐全；手工/系统/留痕/核对列（§五）明确排除；删净旧 `tag_5g`/`industry`/「严禁自行推理」。**24 查询可用列逐一对齐 DDL，无遗漏无臆造**。同步更新 `CONTEXT.md` 模块术语（`mod_*_ai` → JOIN 明细表）。
 
 > ⚠️ **ADR-0004（模块配置驱动）**：模块过滤法**不是** `contracts.mod_service_ai=1` 列，而是 JOIN 明细表：`contract_module_hits WHERE module_key='service' AND hit=1`。schema skill 须声明 `contract_modules`（配置：module_key/name/anchor_names/enabled）与 `contract_module_hits`（明细：hit/keywords/category/raw_text）的 JOIN 口径，并同步更新 CONTEXT.md 术语（`mod_*_ai` 列 → 明细表）。本单文案里旧的 `mod_*_ai/kw/cat` 宽列表述以此为准改写。
 

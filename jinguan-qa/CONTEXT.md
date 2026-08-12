@@ -18,12 +18,12 @@ _Avoid_: 金额类型（"类型"一词已被 contract_type 占用）
 **无金额合同 (Null-Amount Contract)**：
 `amount IS NULL` 的合法合同类别（如框架协议）。是一个可查询的类别，不是缺失数据；`SUM(amount)` 一律须带 `WHERE amount IS NOT NULL`。
 
-**模块命中 (Module Hit / `mod_*_ai`)**：
-四模块（服务内容 mod_service / 技术要求 mod_tech / 岗位说明 mod_role / 人员需求 mod_staff）各自独立的 AI 关键词命中标记（0/1），由解析模块预存。支撑细粒度查询（如"服务内容含 AI 但技术要求未提"= `mod_service_ai=1 AND mod_tech_ai=0`）。
+**模块命中 (Module Hit / `contract_module_hits`)**：
+模块是**配置驱动**（ADR-0004）——预置四模块 `service`/`tech`/`role`/`staff`（可在原型「合同模块」页新增），命中结果**不再是 contracts 宽列**，而是明细表 `contract_module_hits`（每合同×每模块一行，`hit` 0/1 + `keywords`/`category`/`raw_text`）。细粒度查询靠 **JOIN 明细表**（如"服务内容含 AI 但技术要求未提"= `EXISTS(service,hit=1) AND NOT EXISTS(tech,hit=1)`），不是 `mod_service_ai=1` 宽列。
 _Avoid_: AI 标签（那专指合同级汇总的 tag_ai）
 
 **合同级 AI 标签 (`tag_ai`)**：
-四模块任一命中即为 1 的合同级汇总标记。与模块级 `mod_*_ai` 是"汇总 vs 细粒度"的关系，不可混用。
+四模块任一命中即为 1 的合同级汇总标记（contracts 列）。与模块级 `contract_module_hits.hit` 是"汇总 vs 细粒度"的关系，不可混用。
 
 **物化时间列 (Materialized Time Columns)**：
 `sign_year` / `sign_quarter` / `sign_half` / `end_year`——入库时从 `sign_date`/`end_date` 预计算的离散列。查询按这些列过滤时间，其**列语义**（如 `sign_half=1` 即上半年含 Q1Q2）是确定性事实；由自然语言短语（"前两季度"）到该用哪列的**推理**归智能体，不做固定映射表。
