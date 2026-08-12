@@ -9,54 +9,133 @@
 
 为**经小管合同管理**建两大查询能力：**结构化查询**（自然语言→只读 SQL→Markdown 表格）+ **语义检索 RAG**（自然语言→向量检索→带出处的原文答案）。上游有一个**合同解析模块**（Python），把 PDF 经 MinerU + LLM 抽成结构化台账 + 全文向量，写入共享 PostgreSQL + Milvus；查询侧（CoreMind/TS Agent）只读消费。
 
-**系统四层**：
+## 二、系统分层（数据怎么流）
 
-| 层 | 运行时 | 目录 | 职责 |
+```
+                          用户（浏览器）
+                               │
+        ┌──────────────────────▼──────────────────────┐
+   ①    │  前端 Vue3+Element-Plus  jingxiaoguan-master/frontend/   │
+        │     AgentSearch 聊天 UI · 台账/核对/关键词/文件 管理页       │
+        └──────────────────────┬──────────────────────┘
+                               │ HTTP  {code,msg,data}
+        ┌──────────────────────▼──────────────────────┐
+   ②    │  网关 Node/Koa  jingxiaoguan-master/backend/  (:3001)      │
+        │     鉴权(JWT) + 运营 CRUD(登录/台账/关键词/文件…)            │
+        │     /api/agent/chat ──代理──┐                             │
+        └───────────┬────────────────┼─────────────────┘
+                    │ 运营库(PG)      │ {message,history}
+                    ▼                 ▼
+              contract_assistant  ┌───────────────────────────────┐
+              (运营表7张)      ③  │  查询 Agent  CoreMind/TS  jinguan-qa/ │
+                                 │   ReAct → sql_query(只读SQL)         │
+                                 │        → vector_search(召回50→精排8)  │
+                                 └───────┬───────────────┬───────────┘
+                                只读 SQL │               │ 向量检索
+                    ┌───────────────────▼──┐         ┌──▼──────────┐
+   ④(共享契约)      │  PostgreSQL           │         │  Milvus      │
+                    │  contracts-db/        │◀──写──┐ │  contract_   │◀─写─┐
+                    │  contracts 29字段+片段 │       │ │  chunks 向量  │     │
+                    └───────────────────────┘       │ └─────────────┘     │
+                                                     │                     │
+        ┌────────────────────────────────────────── ┴─────────────────────┴┐
+   ⑤    │  解析模块 Python  jinguan-parse/                                    │
+        │   PDF → MinerU → LLM 抽 20 AI 字段 → 人工核对 → 写 PG + 建向量        │
+        └────────────────────────────────────────────────────────────────┘
+
+数据流向：⑤解析【写入】④共享库  →  ③查询 Agent【只读】④  →  ②网关代理  →  ①前端展示
+运营 CRUD（②）走独立的运营库 contract_assistant，与④查询库分开。
+```
+
+| # | 层 | 运行时 | 目录 | 职责 | 是否保留 |
+|---|---|---|---|---|---|
+| ① | 前端 | Vue3+Element-Plus | `jingxiaoguan-master/frontend/` | 聊天 UI + 运营管理页（成品 UI，只改对接真实 API） | ✅ 保留 |
+| ② | 网关 | Node/Koa (:3001) | `jingxiaoguan-master/backend/` | 鉴权 + 运营 CRUD + `/agent/chat` 代理到 CoreMind | ✅ 保留（T10 已迁 PG） |
+| ③ | 查询 Agent | CoreMind/TS | `jinguan-qa/` | ReAct → `sql_query` + `vector_search` → 带出处答案 | ✅ 核心 |
+| ④ | 共享数据契约 | PostgreSQL + Milvus | `contracts-db/` | 解析写 / 查询读的同一套表 + 向量库 | ✅ 核心 |
+| ⑤ | 解析模块 | Python | `jinguan-parse/` | PDF→MinerU→LLM→人工核对→写 PG + 建向量 | ✅ 核心 |
+
+> **⚠️ 两个库别混**：`contracts-db`（④，查询侧只读，`contracts` 29 字段）是查询库；网关的 `contract_assistant`（②，运营 CRUD，7 张运营表）是运营库。二者**不是同一个库**。
+> **⚠️ `jingxiaoguan-master` 前端+后端都保留**：前端硬依赖后端 30+ 接口（删后端=前端全线 Network Error）。废弃的只是原型的技术选型（MySQL/裸 LLM/10 字段表），不是代码本身。
+
+---
+
+## 三、目录结构（一图看全）
+
+```
+hetong-agent/
+├── README.md               ← 本文件（新会话入口）
+├── handoff.md              ← 详细交接（进度/决策/坑）
+├── AGENTS.md · CONTEXT-MAP.md   ← Agent skills 配置 / 多上下文根索引
+│
+├── contracts-db/          ④ 共享数据契约（解析写·查询读）
+│   ├── migrations/            001_contracts.sql(29字段+片段) · 002_contract_md_sync.sql
+│   ├── seeds/                 001_dict.sql(枚举字典+4模块种子)
+│   └── tests/                 Docker PG 断言
+│
+├── jinguan-parse/         ⑤ 解析模块（Python）
+│   ├── src/jinguan_parse/     clients·schema·keywords·extract·persist（抽取）
+│   │                          confirm·vector·sync·ingest·api（核对/建向量/同步/批处理）
+│   │                          chunking·config
+│   └── tests/                 40 测试（fake 逻辑层 + 真 PG/Milvus 集成层）
+│
+├── jinguan-qa/            ③ 查询 Agent（CoreMind/TS）
+│   ├── coremind.yaml          Agent 定义 + systemPrompt（路由/口径/出处/锁定）
+│   ├── src/                   sql_query·assertReadOnly（Text-to-SQL 只读三防线）
+│   │                          vector_search·vectorClients（两阶段召回50→精排8）
+│   ├── skills/jinguan-schema/ 数据字典（列语义，注入 systemPrompt）
+│   ├── evals/scenarios.yaml   11 评测场景
+│   ├── docs/adr · docs/specs  架构决策 / 规格
+│   └── tests/                 28 vitest（单测 + 真 embed/Milvus/rerank 集成）
+│
+├── jingxiaoguan-master/   ①② 网关 + 前端（保留）
+│   ├── backend/               Koa 网关：src/routes(13路由) · config/db.js(PG)
+│   │                          scripts/init_pg.sql · services/agentService.js(代理)
+│   └── frontend/              Vue3：src/views(17页,含 AgentSearchView) · src/api(14模块)
+│
+├── vendor/coremind/       CoreMind 框架（vendored，③ 依赖它跑）
+├── data/                  合同 PDF/MD 素材（大文件 gitignore，本地保留）
+└── docs/ · demo/          领域文档 / 原型 demo
+```
+
+---
+
+## 四、已完成什么（真环境验证过，非仅 fake）
+
+| 工单 | 层 | 状态 | 位置 | 验证 |
+|---|---|---|---|---|
+| **T01** PG 建表 + 种子 + 配置驱动模块 | ④ | ✅ | `contracts-db/` | Docker PG16 断言绿 |
+| **T02** 解析测试接缝（结构感知切分） | ⑤ | ✅ | `chunking.py` | pytest 绿 |
+| **T03** MinerU + LLM 抽取 | ⑤ | ✅ | `clients/schema/keywords/extract/persist.py` | **真端到端冒烟**（真 PDF→MinerU→DeepSeek） |
+| **T04** 核对→正式库 + 建向量 + 片段同步 + 批处理 | ⑤ | ✅ | `confirm/vector/sync/ingest/api.py` | 真 PG + 真 Milvus v2.4.5 **40 测试绿** |
+| **T05** schema skill 重写（列语义 + JOIN 明细表） | ③ | ✅ | `skills/jinguan-schema/` | 24 列对齐 DDL · grep 校验 |
+| **T06** sql_query 裸 SQL + assertReadOnly | ③ | 🟢 | `sql_query.ts` `assertReadOnly.ts` | 18 vitest 绿 · 端到端待 G1 |
+| **T07** vector_search 两阶段 + 双形态 | ③ | ✅ | `vector_search.ts` `vectorClients.ts` | **28 vitest 绿**（含真 embed+Milvus+rerank） |
+| **T08** RAG 路由 + 出处 + 单合同锁定 | ③ | 🟢 | `coremind.yaml` `evals/scenarios.yaml` | 11 场景 schema 校验 · 端到端待 API key+G1 |
+| **T10** Koa 网关 MySQL→PG + CoreMind 代理 | ② | ✅ | `jingxiaoguan-master/backend/` | 真 PG16 **三冒烟绿**（登录/CRUD/agent 代理） |
+
+测试：`cd jinguan-parse && python3 -m pytest tests/`（40 绿） · `cd jinguan-qa && npx vitest run`（28 绿）
+
+---
+
+## 五、下一步 / 未完成
+
+| 工单 | 层 | 说明 | 卡点 |
 |---|---|---|---|
-| 解析模块 | **Python** | `jinguan-parse/` | PDF→MinerU→LLM 抽 AI 字段→人工核对→写 PG + 建 Milvus 向量 |
-| 共享数据契约 | PostgreSQL | `contracts-db/` | 解析写 / 查询读的同一套表（DDL + 种子 + Docker 验证脚本） |
-| 查询 Agent | **CoreMind/TS** | `jinguan-qa/` | ReAct→`sql_query`+`vector_search`→Markdown 答案（依赖 `vendor/coremind` CLI） |
-| 网关 + 前端 | Node/Koa + Vue3 | `jingxiaoguan-master/` | 鉴权 + 运营 CRUD + 代理到 CoreMind；AgentSearch 聊天 UI（**参考 UI，保留，只改对接**） |
+| **T11** 前端接真实数据 | ① | AgentSearch MessageItem 扩 `{content,tableData?,sql?,citations?}`，对接网关 `/agent/chat` | 无（T10 已给富格式契约） |
+| **T09** eval gate | ③ | 跑通 `scenarios.yaml` 全绿 | **G1** 只读串 + **DEEPSEEK_API_KEY** |
+
+**用户控制的门**（未提供则相应工单卡**部署**，不卡构建）：
+- **G1** PG 只读角色连接串（T06/T08/T09 端到端）
+- **DEEPSEEK_API_KEY** 跑真 LLM ReAct（T08/T09 eval）
+- **G4** 测试快照真值（数值比对；已有第一条 `data/test-example` ↔ 台账真值）
+- G2 端点 **已解决** / G3 模块锚点 **已解决**（种子化） / G5 同步机制 **已拍板**（显式函数 + MD5）
+
+工单全文在 `.scratch/jinguan-retrieval/issues/01–11-*.md`。
 
 ---
 
-## 二、已完成什么（真环境验证过，非仅 fake）
-
-| 工单 | 状态 | 位置 | 验证 |
-|---|---|---|---|
-| **T01** PG 建表 + 种子 + 配置驱动模块 | ✅ | `contracts-db/` | Docker PG16 · 27 断言绿 |
-| **T02** 解析测试接缝（结构感知切分） | ✅ | `jinguan-parse/src/.../chunking.py` | pytest 绿 |
-| **T03** MinerU + LLM 抽取 | ✅ | `clients/schema/keywords/extract/persist.py` | **真端到端冒烟**（真 PDF→真 MinerU→真 DeepSeek） |
-| **T04-切片1** 核对→正式库 | ✅ | `confirm.py` | 真 PG 绿 |
-| **T04-切片2** 建向量 | ✅ | `vector.py` | **真 Milvus v2.4.5 + 真 embedding** 集成绿 |
-| **T04-切片4** 批处理 + HTTP + 指纹去重 | ✅ | `ingest.py` `api.py` | 真 PG 绿 |
-
-**全套 34 测试全绿**：`cd jinguan-parse && python3 -m pytest tests/`
-
----
-
-## 三、当前卡在哪 / 下一步
-
-### 唯一进行中：T04-切片3 片段同步
-卡 **G5 机制拍板**（用户控制项）：标签更新只改 metadata / 原文更新重建向量 / 按模块增量；触发方式选事件 / 批量 / 版本号。**定了就能收尾 T04。**
-
-### 下一步可选（依赖图见 handoff 第四节）
-1. 拍板 G5 → 收尾 T04 切片3
-2. **T05**（schema skill，无卡点，须按 ADR-0004 声明明细表 JOIN 口径）
-3. **T10**（Koa 网关 PG + 代理，无卡点）
-4. T06→T07→T08→T09（查询 Agent 工具链，端点已探明）→ T11（前端）
-
-工单全文（含九维度 + 可观测验收 + 验证命令）在 `.scratch/jinguan-retrieval/issues/01–11-*.md`。T05/T06/T07 已按最新决策刷新。
-
-### 用户控制的门（未提供则相应工单卡部署，不卡构建）
-- **G1** PG 只读角色连接串（T06 部署）
-- **G4** 测试快照真值（数值比对 eval；已有第一条：`data/test-example` 合同 ↔ 台账真值）
-- **G5** 片段同步机制（T04 切片3）
-- G2 端点 **已解决**（见下）；G3 模块锚点 **已解决**（种子化）
-
----
-
-## 四、关键配置 / 端点
+## 六、关键配置 / 端点
 
 真实值在 `jinguan-parse/.env`（**被 .gitignore 挡住，勿提交**；模板见 `.env.example`）：
 
@@ -72,7 +151,7 @@
 
 ---
 
-## 五、绝对不要再踩的坑
+## 七、绝对不要再踩的坑
 
 1. **🔴 数据库是 PostgreSQL 不是 MySQL**。`jingxiaoguan-master` 的 MySQL/裸 LLM/10 字段表都是原型。正式版统一 PG。别碰它的 `init.sql`。
 
@@ -94,7 +173,7 @@
 
 ---
 
-## 六、开发工作方式（用户硬性要求）
+## 八、开发工作方式（用户硬性要求）
 
 - **有开源不自研**：开发涉及新工具/库/MCP/skill 前，**先评测 GitHub/npm**（功能契合/star/维护/许可/依赖体积），把结果给用户，**用户确认后才动手**。已选：openai+instructor(抽取) / pyahocorasick(关键词) / psycopg3(PG) / fastapi(HTTP) / pymilvus(Milvus)。切分保留手写（合同结构专用）。**LlamaIndex 评估结论=建向量不用，留 T07/T08 检索候选**。
 - **tracer-bullet 纵向切片**：每片切一条贯穿数据/后端/逻辑/测试的窄完整路径、独立可验证；先做不卡外部条件的，卡 G1/G5 的单独切出等条件。
@@ -103,7 +182,7 @@
 
 ---
 
-## 七、快速上手（新会话按此顺序读）
+## 九、快速上手（新会话按此顺序读）
 
 1. 本 `README.md`（当前）
 2. `handoff.md` **第零节**（最新进度）+ 后续节（设计背景）

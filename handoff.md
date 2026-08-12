@@ -86,10 +86,11 @@ jinguan-qa/            ← 查询侧 TS（未动，T05+ 才碰）
 |---|---|---|
 | 解析模块 | **Python** | PDF→MinerU→LLM抽20个AI字段→人工核对→写PG+建Milvus向量 |
 | 查询Agent | **CoreMind/TS** (`jinguan-qa/`) | ReAct→`sql_query`+`vector_search`→Markdown答案 |
-| 网关 | **Node/Koa**（从`jingxiaoguan-master/backend/`改造） | 鉴权+运营CRUD→`/api/agent/chat`代理到CoreMind |
+| 网关 | **Node/Koa**（`jingxiaoguan-master/backend/`，T10 已改造完） | 鉴权+运营CRUD→`/api/agent/chat`代理到CoreMind |
 | 前端 | **Vue3+Element-Plus**（`jingxiaoguan-master/frontend/`） | AgentSearchView聊天+台账/核对/关键词管理——**UI已设计好，保留，只改对接真实API** |
 
-**⚠️ 关键区分**：`jingxiaoguan-master/`的前端是参考UI；它的MySQL/裸LLM调用/10字段合同表都是原型。正式版统一用**PostgreSQL + CoreMind + 29字段台账**。
+**⚠️ 关键区分**：`jingxiaoguan-master/` 的**前端和后端都保留、都用**——前端是成品 UI，后端(T10 已迁 PG+代理 CoreMind)是**正式网关**。要废弃的只是原型的技术选型（MySQL/裸LLM/10字段合同表），正式版统一 **PostgreSQL + CoreMind + 29字段台账**。
+> ⚠️ **后端不可删**：前端 axios `baseURL` 硬编码指向该后端(`:3001/api`)，深度依赖它 30+ 接口（登录/用户/角色/部门/菜单/字典/台账/关键词/范本/文件/首页/订单 CRUD + agent/chat）。删后端 = 前端全线 Network Error。仅 `/agent/chat` 转发 CoreMind，其余 CRUD 由后端自身处理。
 
 ---
 
