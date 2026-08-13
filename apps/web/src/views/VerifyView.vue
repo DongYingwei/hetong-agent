@@ -66,50 +66,14 @@
           </div>
         </div>
 
-        <!-- PDF 内容仿纸张渲染区 -->
-        <div class="flex-1 overflow-y-auto p-4 flex justify-center bg-gray-100/60">
-          <div class="bg-white shadow border border-gray-200 rounded-lg p-8 w-[420px] text-gray-700 leading-relaxed text-xs space-y-3">
-            <div class="text-center mb-4 border-b border-gray-100 pb-3">
-              <div class="w-14 h-14 mx-auto mb-2 bg-gray-100 rounded flex items-center justify-center text-[10px] text-gray-400">
-                二维码/印章
-              </div>
-              <div class="text-[11px] text-gray-400 font-mono">合同编号：{{ currentForm.customerContractNo }}</div>
-            </div>
-
-            <h2 class="text-center text-base font-bold text-[#1A1A1A] mb-4">{{ currentForm.contractName }}</h2>
-
-            <p><strong class="text-gray-900">甲方：</strong>{{ currentForm.customerName }}</p>
-            <p><strong class="text-gray-900">乙方：</strong>{{ currentForm.signingEntity }}</p>
-            <p><strong class="text-gray-900">签订地点：</strong>南京市江宁区软件园</p>
-            <p><strong class="text-gray-900">签订日期：</strong>{{ currentForm.signDate }}</p>
-
-            <div class="border-t border-gray-200 pt-3">
-              <p class="font-bold text-gray-900 mb-1">第一条 服务内容</p>
-              <p class="text-gray-600">乙方为甲方提供智能运维与算力服务，基于 AIOps 智能平台进行 7×24 小时监控与自动化故障预测修复...</p>
-            </div>
-
-            <div class="border-t border-gray-200 pt-3">
-              <p class="font-bold text-gray-900 mb-1">第二条 服务期限</p>
-              <p class="text-gray-600">本合同服务期限为一年，自 {{ currentForm.startDate }} 起至 {{ currentForm.endDate }} 止。</p>
-            </div>
-
-            <div class="border-t border-gray-200 pt-3">
-              <p class="font-bold text-gray-900 mb-1">第三条 合同金额</p>
-              <p class="text-gray-600">本合同总金额为人民币 {{ currentForm.amount }} 元（含税），适用税率为 {{ currentForm.taxRate }}。</p>
-            </div>
-
-            <div class="border-t border-gray-200 pt-3">
-              <p class="font-bold text-gray-900 mb-1">第四条 技术要求</p>
-              <p class="text-gray-600">乙方团队需具备机器学习、深度学习相关技术能力，项目人员资质符合考核线评定标准。</p>
+        <!-- 合同原文（MinerU 解析的 Markdown，真实内容） -->
+        <div class="flex-1 overflow-y-auto p-4 bg-gray-100/60">
+          <div class="bg-white shadow border border-gray-200 rounded-lg p-6 text-gray-700 leading-relaxed text-[13px]">
+            <div v-if="mineruMd" class="markdown-body" v-html="renderMarkdown(mineruMd)"></div>
+            <div v-else class="text-gray-400 text-center py-16">
+              暂无合同原文（解析未返回 MinerU 文本，或尚未进入草稿模式）
             </div>
           </div>
-        </div>
-
-        <!-- PDF 分页指示 -->
-        <div class="flex items-center justify-center gap-2 px-4 py-2 border-t border-gray-200 bg-white shrink-0 text-xs">
-          <button class="w-6 h-6 rounded border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">‹</button>
-          <span class="text-gray-600 font-medium">1 / 12 页</span>
-          <button class="w-6 h-6 rounded border border-gray-200 flex items-center justify-center text-gray-500 hover:bg-gray-50">›</button>
         </div>
       </div>
 
@@ -410,6 +374,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { Back, Search, ZoomIn, ZoomOut, Close } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { contractApi, parseApi } from '../api';
+import { renderMarkdown } from '../utils/markdown';
 
 const route = useRoute();
 const router = useRouter();
@@ -420,6 +385,8 @@ const activeTabIndex = ref(0);
 const targetId = computed(() => (route.query.id ? Number(route.query.id) : null));
 // 解析草稿模式：?draftId=N（对接 /api/parse/draft，人工核对入正式库+建向量）。
 const draftId = computed(() => (route.query.draftId ? Number(route.query.draftId) : null));
+// 合同原文（MinerU 解析的 Markdown，草稿模式渲染到左栏）。
+const mineruMd = ref('');
 
 // 多合同核对 Tab 视图数据
 const fileTabs = ref([
@@ -525,8 +492,12 @@ onMounted(async () => {
       if (res.code === 200 && res.data && tab) {
         const f = res.data.form || {};
         const form = tab.form as any;
+        // 草稿模式只核对这一份，去掉剩余的 mock tab（兴晟泽/华苏/电网巡检那批假数据）。
+        fileTabs.value = [tab];
         tab.id = res.data.draft_id;
         tab.fileName = (f.contract_name || f.contract_no || '待核对合同') + '.pdf';
+        // 合同原文：MinerU 解析的 Markdown（左栏渲染，替代旧的假纸张）。
+        mineruMd.value = res.data.mineru_md_preview || '';
         form.contractNo = f.contract_no || '';
         form.customerName = f.customer_name || '';
         form.contractName = f.contract_name || '';

@@ -218,7 +218,8 @@ def _read_draft(conn, draft_id: int) -> dict | None:
         "draft_id": draft_id,
         "form": {c: data.get(c) for c in _DRAFT_FORM_COLS},
         "module_hits": data.get("module_hits") or [],
-        "mineru_md_preview": md[:2000],
+        # 核对页左侧展示全文（一份合同 40KB 级别，JSON + markdown 渲染可接受；截断会让合同"看起来不全"）。
+        "mineru_md_preview": md,
         "mineru_md_len": len(md),
     }
 

@@ -67,7 +67,7 @@
       </div>
     </div>
 
-    <!-- 阶段 3：解析完成 (1:1 还原 demo.html) -->
+    <!-- 阶段 3：解析完成（真实草稿） -->
     <div v-else-if="phase === 'done'" class="p-2">
       <div class="text-center py-3">
         <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-[#E6F8F0] mb-3">
@@ -75,7 +75,7 @@
         </div>
         <p class="text-base font-bold text-[#1A1A1A] mb-1">解析完成</p>
         <p class="text-xs text-gray-500 mb-4">
-          共解析 <span class="font-semibold text-[#049667]">{{ parsedResults.length || 3 }}</span> 份合同，AI识别 <span class="font-semibold text-[#049667]">84</span> 项字段，<span class="font-semibold text-orange-500">9</span> 项需手工补录
+          共解析 <span class="font-semibold text-[#049667]">{{ parsedResults.length }}</span> 份合同，已入草稿待人工核对
         </p>
       </div>
 
@@ -97,10 +97,7 @@
                 客户: <span class="text-gray-700">{{ item.customer_name }}</span>
               </div>
             </div>
-            <div class="text-right">
-              <div class="font-bold text-[#049667]">{{ formatCurrency(item.amount) }}</div>
-              <span class="tag tag-orange mt-1">未核对</span>
-            </div>
+            <span class="tag tag-orange">待核对</span>
           </div>
         </div>
       </div>
@@ -154,9 +151,8 @@ import { ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { Document, Delete, Loading, CircleCheckFilled, Cpu, Clock, Plus, Right } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { contractApi, fileApi } from '../../api';
-import { formatFileSize, formatCurrency } from '../../utils/formatters';
-import type { ContractLedger } from '../../types';
+import { parseApi, type DraftForm } from '../../api';
+import { formatFileSize } from '../../utils/formatters';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -172,7 +168,14 @@ const selectedFiles = ref<File[]>([]);
 
 const progressPercent = ref(0);
 const currentParsingHint = ref('');
-const parsedResults = ref<Partial<ContractLedger>[]>([]);
+// 真实解析出的草稿（parseApi.upload → draft_id + 抽取字段），供「解析完成」阶段展示与跳转。
+interface ParsedDraft {
+  draft_id: number;
+  contract_name: string;
+  contract_no: string;
+  customer_name: string;
+}
+const parsedResults = ref<ParsedDraft[]>([]);
 
 watch(() => props.modelValue, (val) => {
   visible.value = val;
@@ -217,77 +220,63 @@ function verifyLater() {
   visible.value = false;
   resetImport();
   emit('success');
-  ElMessage.info('已保存入库，您可在合同台账中随时发起人工核对');
+  ElMessage.info('草稿已保留，可在文件管理中重新上传并核对');
 }
 
 function proceedToVerify() {
+  const first = parsedResults.value[0];
   visible.value = false;
   resetImport();
-  emit('success');
-  router.push({ path: '/verify', query: { mode: 'multi' } });
+  if (first) {
+    // 真实草稿 → 跳转草稿核对页（?draftId=N），不再是 demo 的多合同 mock。
+    router.push({ path: '/verify', query: { draftId: first.draft_id } });
+  } else {
+    emit('success');
+    ElMessage.warning('没有可核对的草稿');
+  }
 }
 
 async function startParsing() {
   if (selectedFiles.value.length === 0) return;
 
   phase.value = 'parsing';
-  progressPercent.value = 10;
-  currentParsingHint.value = '正在上传文件并写入持久化存储...';
+  progressPercent.value = 5;
+  currentParsingHint.value = '正在上传文件...';
 
+  const drafts: ParsedDraft[] = [];
   try {
     for (let i = 0; i < selectedFiles.value.length; i++) {
       const file = selectedFiles.value[i];
+      if (!file) continue;
       const formData = new FormData();
       formData.append('file', file);
-      await fileApi.upload(formData);
+      currentParsingHint.value = `正在解析《${file.name}》（MinerU + LLM，大文件可能数分钟）...`;
 
-      progressPercent.value = Math.min(40, Math.round(((i + 1) / selectedFiles.value.length) * 40));
+      const res = await parseApi.upload(formData);
+      if (res.code === 200 && res.data?.draft_id) {
+        const f = (res.data.draft?.form ?? {}) as DraftForm;
+        drafts.push({
+          draft_id: res.data.draft_id,
+          contract_name: f.contract_name || file.name.replace(/\.[^/.]+$/, ''),
+          contract_no: f.contract_no || '待填写',
+          customer_name: f.customer_name || '',
+        });
+      } else if (res.code === 200 && res.data?.status === 'skipped_duplicate') {
+        ElMessage.warning(`《${file.name}》内容指纹与已解析合同相同，已跳过（未重复解析）`);
+      } else {
+        ElMessage.warning(`《${file.name}》解析未产生草稿：${res.msg || '未知原因'}`);
+      }
+
+      progressPercent.value = Math.min(90, Math.round(((i + 1) / selectedFiles.value.length) * 90));
     }
 
-    currentParsingHint.value = 'AI 识别合同字段、金额、条款及关键词...';
-    await new Promise((resolve) => setTimeout(resolve, 800));
-    progressPercent.value = 75;
-
-    const mockParsed: Partial<ContractLedger>[] = selectedFiles.value.map((file, idx) => {
-      const randomNo = 'HT-2026-' + Math.floor(1000 + Math.random() * 9000);
-      const fileNameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
-      const amount = Math.floor(10 + Math.random() * 90) * 10000;
-      return {
-        contract_no: randomNo,
-        customer_name: fileNameWithoutExt.includes('服务') ? '兴晟泽科技有限公司' : '华南电力工程集团',
-        contract_name: fileNameWithoutExt,
-        contract_type: (idx % 3) + 1,
-        sign_date: new Date().toISOString().split('T')[0],
-        amount,
-        assessment_line: '电力',
-        has_ai_keyword: 1,
-        contract_status: 2,
-        verify_status: 0,
-      };
-    });
-
-    for (const record of mockParsed) {
-      await contractApi.create({
-        contractNo: record.contract_no,
-        customerName: record.customer_name,
-        contractName: record.contract_name,
-        contractType: record.contract_type,
-        signDate: record.sign_date,
-        amount: record.amount,
-        assessmentLine: record.assessment_line,
-        hasAiKeyword: record.has_ai_keyword,
-        contractStatus: record.contract_status,
-      });
-    }
-
+    parsedResults.value = drafts;
     progressPercent.value = 100;
-    parsedResults.value = mockParsed;
-
-    await new Promise((resolve) => setTimeout(resolve, 400));
     phase.value = 'done';
-    ElMessage.success(`解析完成，共解析 ${mockParsed.length} 份合同`);
-  } catch (err) {
-    ElMessage.error('解析处理失败，请检查文件格式');
+    if (drafts.length > 0) ElMessage.success(`解析完成，${drafts.length} 份已入草稿待人工核对`);
+    else ElMessage.warning('未产生待核对草稿（可能均重复或解析失败）');
+  } catch (err: any) {
+    ElMessage.error(`解析失败：${err?.response?.data?.msg || err?.message || '未知错误'}`);
     phase.value = 'upload';
   }
 }
