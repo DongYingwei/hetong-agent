@@ -1,7 +1,7 @@
 # 经小管合同智能体 · 交接文档
 
 > 写给一个**完全没有上下文的新会话**。读完这份 + `README.md`（有分层图+目录树），就能接着干。
-> 最后更新：2026-08-12 · 状态：**T01–T08 + T10 完成，T09/T11 待办**。
+> 最后更新：2026-08-13 · 状态：**T01–T08 + T10 完成，T09/T11 待办**。附 CoreMind 0.3.0-rc.2 升级评估（五点五节，未实施）。
 
 ---
 
@@ -129,6 +129,41 @@
 
 ### 🔴 坑12：开源优先（用户硬性要求）
 涉及新工具/库前先评测 GitHub/npm 现成方案并**等用户确认**，有开源不自研。已选：解析侧 openai+instructor / pyahocorasick / psycopg3 / fastapi / pymilvus；查询侧 node-sql-parser + pg + @zilliz/milvus2-sdk-node + openai + vitest；网关 pg。切分保留手写（合同结构专用）。**LlamaIndex 评估结论=不用**（TS 版不成熟）。
+
+### 🔴 坑13：CoreMind 无内建 HTTP server，`/chat` wrapper 要我们自己写
+逐版核对（0.2.0-rc.1 → 0.3.0-rc.2）CoreMind 全线 **grep `createServer/express/koa/fastify/.listen` 零命中**——它只有 CLI（`coremind chat/run`）与库 API（`CoreMindRuntime` / `ChatSession`），**没有任何 HTTP 端点**。网关 `agentService.js` 要代理到的 `COREMIND_URL` `/chat`（契约 `{message,history}`→`{content,tableData?,sql?,citations?}`）**必须我们自己写薄 wrapper**：用 `CoreMindRuntime.create()` + `ChatSession.chat()`（走 `runAgentTurn`，复用同一预算/权限/Trace/session），把 `ChatTurnResult.text` 解析成富格式返回。**这是 T11 联调前置，上游不会帮我们解决。** 别去 vendor 里找现成 server。
+
+### 🔴 坑14：检索能力 CoreMind 不提供，全靠自定义工具
+CoreMind 定位是"配置驱动 Agent 框架"，**没有原生 RAG/向量/embedding/rerank 任何模块**（grep 零命中，0.3.x 亦然）。检索的"智能"全在我们的 systemPrompt 路由 + `sql_query`/`vector_search` 两工具。**别期待升级 CoreMind 会带来检索能力**；升级只影响 Harness/Loop/预算/上下文压缩等执行内核。
+
+---
+
+## 五点五、CoreMind 0.3.0-rc.2 升级评估（2026-08-13 核对，未实施）
+
+> 现状：`vendor/coremind/` 是 **0.2.0-rc.1**；上游 tip 是 **0.3.0-rc.2**（2026-08-12）。
+> 下面是逐版核对结论 + 是否升级的判断。**升级 vendor 是不可逆改动，需用户点头后再动。**
+
+### 上游演进定性
+- 0.2.0-rc.1 → 0.3.0-rc.1：大版本，落地完整 **Harness 执行内核 + Loop 状态机 + durable 恢复 + 上下文压缩 + Coding Kernel**。
+- 0.3.0-rc.1 → 0.3.0-rc.2：**收口/安全版**，非功能版。新增 `run-effect-coordinator.ts`（副作用/幂等抽离，纯重构）、`not_started` Effect Receipt（审批拒绝语义）、递归脱敏、RunState 顺序校验收紧、Coding Kernel 通过判定绑真实证据。**对合同查询影响都很小**。
+
+### 值得我们吸收的（升级动机，按性价比）
+| 机制 | 文件 | 价值 |
+|---|---|---|
+| **多维预算成本闸** | `budget.ts` `RunBudgetController` | 现有五维（turns/toolCalls/toolFailures/tokens/costUsd）。新增 `maxTokens`/`maxCostUsd` 可给查询 Agent 上**成本上限**，直接写进 `coremind.yaml` 的 `runtime:` |
+| **确定性上下文压缩** | `context.ts` `ContextProtector` | 非 LLM 的确定性摘要 + 稳定前缀指纹。**RAG 灌大量片段时防爆上下文**，可替换 yaml 里 `session.compact:true` 的 LLM 摘要（省 token 且确定性） |
+| **snapshot 富格式契约** | `snapshot.ts` `RunResult.snapshot` | 跨进程/语言统一契约，是网关↔CoreMind 富格式返回（`{content,tableData,sql,citations}`）的天然载体 |
+
+### 不受升级影响 / 不采用的
+- **检索侧不动**（坑14）：无原生 RAG，两工具架构与上游理念一致。
+- **HTTP wrapper 仍自己写**（坑13）：上游无内建 server。
+- **Loop 引擎（xstate 规划→执行→验证→修复）先评估不实施**：当前 SQL 自纠错（≤2 次）靠 systemPrompt 文字约束，不是引擎级硬保证。若要把"自纠错 + 重复 SQL 检测"变引擎级，可评估切 `loop:` 配置——**但先确认不破坏坑7（同轮禁并发两工具）与坑10（eval 不支持多轮 turns）**。作为 T09 eval 稳定后的候选增强，不进当前关键路径。
+
+### 升级前置（动手前必做）
+1. `engines` 要 **Node ≥22.19**；依赖 `@earendil-works/pi-*` → **0.84.1**。
+2. schemaVersion 仍是 **2**（`coremind.yaml`/`scenarios.yaml` 无需改结构）。
+3. 升完**先跑 query-agent 28 vitest 防回归**，再跑 parse-service 40 pytest。
+4. 目标版本 = **0.3.0-rc.2**（当前 tip，含安全修复，不停在 rc.1）。
 
 ---
 
