@@ -1,11 +1,42 @@
 # 经小管合同智能体 · 交接文档
 
 > 写给一个**完全没有上下文的新会话**。读完这份 + `README.md`（有分层图+目录树），就能接着干。
-> 最后更新：2026-08-13 · 状态：**T01–T08 + T10 完成；解析上传闭环(前端上传→解析→核对→入库+建向量→台账可见→删除)已打通**；T09/T11 部分推进。附 CoreMind 0.3.0-rc.2 升级评估（五点五节，未实施）。
+> 最后更新：2026-08-13 · 状态：**T01–T08 + T10 完成；解析上传闭环已打通；导出侧 12b+12c 完成（TDD+审查绿）**；T09/T11 部分推进。附 CoreMind 0.3.0-rc.2 升级评估（五点五节，未实施）。
 
 ---
 
-## 零、最新进展（2026-08-13 · 解析上传闭环）
+## 零之零、最新进展（2026-08-13 · 检索结果导出规格化 + 忠实导出 12b/12c）
+
+> 本轮做了「需求收敛(grilling)→PRD→规格→拆工单→TDD 实现→代码审查」一条龙,聚焦**结构化检索结果导出 Excel**。全部**未提交**。
+
+### 本轮产出的文档(锚点,新会话先读)
+- **[ADR-0005](apps/query-agent/docs/adr/0005-prompt-level-planning-not-engine-planner.md)**：三条不可逆边界——①多步规划=提示词级 ReAct,**不引入引擎级 Planner**、**不升 CoreMind**(维持 0.2.0-rc.1);②导出=**纯前端**;③导出**忠实搬行、不跨 `amount_type` 合计**。
+- **[PRD](docs/plan/prd-导出与验收升级.md)** + [requirements §9 变更 1](docs/plan/requirements.md)：本次范围=导出 + 验收口径升级(路由对/出处对/**数值可核验**,非真值 gate);抽取质量出范围。
+- **CONTEXT.md 新增术语**：`多步规划(提示词级)`、`结构化结果导出`。
+- **工单**(`.scratch/jinguan-retrieval/issues/`)：`12-EPIC` + `12a/12b/12c/12d`(拆片,阻塞边文本记录)。
+
+### 本轮实现了什么(✅ 已完成、审查绿)
+- **12b — 通用忠实导出器 + vitest 底座**：`apps/web/src/utils/excelExporter.ts` 新增 `buildFaithfulWorkbook()`(列无关、不套台账模板、不补值、不聚合)+ `downloadWorkbook()`;`apps/web` 引入 vitest,`npm test`(`apps/web/src/utils/faithfulExport.spec.ts`)**5 测绿**:行数守恒/数值忠实/无金额落空/合计行忠实/空态抛错。
+- **12c — 导出接线 + 空态 + 去导出层假值**：`AgentSearchView.vue` 的 `handleExportResult` 改为只吃真实 `tableData`,**删除导出路径里的 mock 兜底与硬编码假值**(`V250056`/`诺博汽车`/`36923.25`/`*0.94` 税率算术等);空态禁用+提示;`catch` 暴露真实错误消息。
+- **代码审查(/code-review 双轴)**:标准轴 0 硬违规;规格轴 1 实质缺口(见下「金额类型」)。已修两处便宜项(注释不再谎称"行无关"、`catch` 不吞消息)。
+
+### ⚠️ 尚未实现(下次接手的清单,按依赖排序)
+| 项 | 是什么 | 现状缺口 | 卡在 |
+|---|---|---|---|
+| **坑13 · CoreMind HTTP wrapper** | 给 CoreMind 包 `/chat` HTTP 端点(`{message,history}`→`{content,tableData?,sql?,citations?}`) | **完全不存在**(`apps/query-agent/src` 无 server 文件);网关 `COREMIND_URL` 无处可指 | **无外部依赖,是 ①→②→③ 打通的前置,推荐下一个做** |
+| **T11 · 前端接真实数据** | 去 mock、`MessageItem` 扩 `sql?`/`citations?`、成功分支接 `tableData`、查看 SQL 折叠、RAG 出处 UI | **只接了 `content`**;仍有 **4 处 `generate42Contracts()`** + 硬编码订单假数据兜底(`AgentSearchView.vue` 成功分支只取 content,失败回落 mock) | 坑13 + G1 + DEEPSEEK_API_KEY |
+| **12a · 行结构 prefactor** | `TableRowItem`/`MessageItem` 完整重类型为真实富格式 | 只在导出侧加了 `isSummary?`;完整重类型未做 | 可与 T11 合做 |
+| **12d · 分口径合计行贯通** | `isSummary` 从 Agent 契约一路贯通到 Excel;混口径分行、无跨口径总计 | Agent 侧只有提示词"分组分行",**无结构化 `isSummary` 标记**;网关未透传;前端未渲染 | T11(Agent 契约) |
+| **金额类型问题**(审查发现) | 金额该以 `number`(带口径)还是 `¥…` 字符串到导出器 | 现状是 `¥…` 字符串,导出到 Excel **是文本、加不起来/排不了序**;单测只喂数字,真实路径未测 | 归 **T11/12d** 决定 |
+
+> **一句话给新会话**:导出侧(12b/12c)已做完并审查干净;**真正没做的核心是那条 ①→②→③ 实时链路**——`CoreMind HTTP wrapper(坑13)`不存在,导致 T11 只能半接、一直走 mock 兜底,12d 无从贯通。**推荐顺序:坑13 wrapper → T11+12a → 12d。**
+
+### 仍缺的外部门(需用户提供,非写代码可解)
+- **G1** PG 只读角色串(`PG_READONLY_URL`) · **DEEPSEEK_API_KEY** · **G4** 数值真值标注集。
+
+---
+
+## 零、上一轮进展（2026-08-13 · 解析上传闭环）
 
 > 目标：**前端上传 PDF → 解析抽取 → 人工核对 → 入库 + 建向量 → 台账可见 → 可删除**。已端到端打通（curl + 后端验证过，前端待你最终点一遍）。
 

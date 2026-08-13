@@ -1,5 +1,50 @@
 import ExcelJS from 'exceljs';
 
+// ── 忠实导出(12b)────────────────────────────────────────────────
+// 列无关的检索结果导出:行里有什么列就写什么列,不套台账模板、不补默认值、
+// 不做任何二次聚合(ADR-0005 忠实搬行 / D4 金额口径 / D2 不幻觉)。
+export interface ExportRow {
+  // 展示列 → 单元格值。isSummary 标记分口径合计行,不改口径语义,仅供识别。
+  [column: string]: string | number | null | undefined | boolean;
+  isSummary?: boolean;
+}
+
+export function buildFaithfulWorkbook(rows: ExportRow[]): ExcelJS.Workbook {
+  if (!rows || rows.length === 0) {
+    throw new Error('无可导出的结果:不生成空表,也不兜底造数据');
+  }
+  const wb = new ExcelJS.Workbook();
+  const ws = wb.addWorksheet('检索结果');
+
+  const columns = Array.from(
+    rows.reduce<Set<string>>((set, row) => {
+      Object.keys(row).forEach((k) => { if (k !== 'isSummary') set.add(k); });
+      return set;
+    }, new Set()),
+  );
+  ws.addRow(columns);
+
+  for (const row of rows) {
+    ws.addRow(columns.map((c) => row[c]));
+  }
+  return wb;
+}
+
+// 把工作簿另存为 .xlsx 下载。纯副作用,与 buildFaithfulWorkbook(可测纯函数)分离。
+export async function downloadWorkbook(wb: ExcelJS.Workbook, fileNamePrefix: string): Promise<void> {
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  const dateStr = new Date().toISOString().substring(0, 10);
+  link.setAttribute('download', `${fileNamePrefix}_${dateStr}.xlsx`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export interface ExportContractRow {
   contract_no?: string;
   no?: string;

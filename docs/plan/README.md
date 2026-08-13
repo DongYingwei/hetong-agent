@@ -18,3 +18,7 @@
 
 - [handoff.md](../../handoff.md)：面向新会话的交接（进度/决策/坑），本规划是其"计划视图"。
 - `.scratch/jinguan-retrieval/issues/`：11 份工单原文（九维度验收），tasks.md 是其索引+关联层。
+
+## 增量 PRD
+
+- [prd-导出与验收升级.md](./prd-导出与验收升级.md)：2026-08-13 grilling 收敛的**单主题 PRD**（结构化结果导出 + 验收口径升级）。是 [requirements §9 变更 1](./requirements.md#9-需求变更区待用户补充) 的展开,锚定 [ADR-0005](../../apps/query-agent/docs/adr/0005-prompt-level-planning-not-engine-planner.md)。

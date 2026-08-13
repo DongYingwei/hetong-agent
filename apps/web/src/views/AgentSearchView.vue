@@ -113,7 +113,7 @@
                 </div>
 
                 <!-- 操作按钮栏 (导出Excel + 在当前展开/收起) -->
-                <div v-if="msg.tableData" class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
+                <div v-if="msg.tableData && msg.tableData.length > 0" class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
                   <el-button size="small" style="height: 28px; font-size: 12px;" @click="handleExportResult(msg)">
                     <el-icon class="mr-1"><Download /></el-icon> 导出完整Excel
                   </el-button>
@@ -206,7 +206,7 @@ import { ref, nextTick, onMounted } from 'vue';
 import { Plus, ChatDotSquare, Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { agentApi } from '../api';
-import { exportFullContractLedgerExcel, exportFullOrderLedgerExcel } from '../utils/excelExporter';
+import { buildFaithfulWorkbook, downloadWorkbook, type ExportRow } from '../utils/excelExporter';
 import ContractViewModal from '../components/modals/ContractViewModal.vue';
 import OrderDetailModal from '../components/modals/OrderDetailModal.vue';
 
@@ -217,6 +217,7 @@ interface TableRowItem {
   customer?: string;
   status?: string;
   rawType?: 'contract' | 'order';
+  isSummary?: boolean;
 }
 
 interface MessageItem {
@@ -423,41 +424,36 @@ function handleClearChat() {
   ElMessage.success('对话记录已清空');
 }
 
-// 导出检索结果为真正的 Excel 文件 (支持合同类保持原样式、订单类1:1还原5截图拼接样式)
+// 忠实导出检索结果:只落真实 tableData 的字段,不补默认值、不兜底假数据、不跨口径合计(ADR-0005 / D2 / D4)。
 async function handleExportResult(msg: MessageItem) {
-  if (msg.type === 'order') {
-    const rawList = msg.tableData || [];
-    const orderList = rawList.map((item) => ({
-      order_no: item.no,
-      project_no: 'V250056',
-      project_name: '长城股份软开外包2025-2027框架人员租赁项目',
-      detail_project_no: 'V250056P120',
-      order_name: item.name,
-      customer_name: item.customer || '诺博汽车系统有限公司',
-      assessment_line: '软件',
-      customer_line: '软件',
-      amount: typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount).replace(/[¥,]/g, '')) || 36923.25,
-      amount_ex_tax: (typeof item.amount === 'number' ? item.amount : parseFloat(String(item.amount).replace(/[¥,]/g, '')) || 36923.25) * 0.94,
-      start_date: '2026-04-01',
-      end_date: '2026-06-30',
-      est_invoice_date: '2026-12-27',
-      order_status: '执行中',
-      tax_rate: 6,
-    }));
-    await exportFullOrderLedgerExcel(orderList, '订单检索明细');
-    ElMessage.success(`🎉 订单检索明细 Excel 已成功导出（共 ${orderList.length} 条数据）！`);
-  } else {
-    const list = msg.tableData || generate42Contracts();
-    const exportRows = list.map((item) => ({
-      contract_no: item.no,
-      customer_name: item.customer || '示例单位',
-      contract_name: item.name,
-      amount: item.amount,
-      assessment_line: '信息技术',
-      contract_status: item.status || '已签约',
-    }));
-    await exportFullContractLedgerExcel(exportRows, '合同检索全量明细');
-    ElMessage.success(`🎉 合同检索全量明细 Excel 已成功导出（共 ${exportRows.length} 条数据）！`);
+  const list = msg.tableData;
+  if (!list || list.length === 0) {
+    ElMessage.warning('无可导出的结果');
+    return;
+  }
+
+  // 映射当前展示的这几列(合同号/名称/金额/客户/状态),不补默认值、不臆造后端未给的列。
+  // 注:通用列无关的落盘逻辑在 buildFaithfulWorkbook;此处按 TableRowItem 的现有字段取值。
+  const rows: ExportRow[] = list.map((item) => {
+    const row: ExportRow = {
+      合同号: item.no,
+      名称: item.name,
+      金额: item.amount ?? null,
+    };
+    if (item.customer !== undefined) row['客户'] = item.customer;
+    if (item.status !== undefined) row['状态'] = item.status;
+    if (item.isSummary) row.isSummary = true;
+    return row;
+  });
+
+  const prefix = msg.type === 'order' ? '订单检索明细' : '合同检索明细';
+  try {
+    const wb = buildFaithfulWorkbook(rows);
+    await downloadWorkbook(wb, prefix);
+    ElMessage.success(`${prefix} Excel 已导出（共 ${rows.length} 条）`);
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    ElMessage.error(`导出失败:${reason}`);
   }
 }
 

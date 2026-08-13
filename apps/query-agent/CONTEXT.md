@@ -61,3 +61,13 @@ RAG 答案必须标注的依据来源：命中片段的合同号 + 来源字段 
 
 **片段同步 (Chunk Sync)**：
 当解析侧的合同标签或原文更新时，向量库中对应片段的向量与 metadata 必须及时随之更新的一致性要求。四模块片段独立存储，可按模块粒度增量重建，避免整份重跑。
+
+## 编排与呈现 (Orchestration & Presentation)
+
+**多步规划（提示词级）(Prompt-level Planning)**：
+Agent 在**单个回合**内、由 `coremind.yaml` 的 systemPrompt（自称 "Query Planner"）驱动的多步推理能力——自主选路（SQL / RAG / 语义路由）、串行联动（向量→SQL）、自纠错重试（≤2 次）。**不是**引擎级规划状态机（`loop.planning`），不做跨回合子问题分解，不动态构造工具（ADR-0005）。
+_Avoid_: Planner 组件、问题拆分引擎（CoreMind 无独立 Planner；"规划"专指这段提示词驱动的 ReAct）
+
+**结构化结果导出 (Structured-Result Export)**：
+把 Agent 已返回的结构化结果表（`tableData`）另存为 Excel(.xlsx) 的**纯展示层**动作，在前端用 `exceljs` 生成、浏览器下载。**忠实导出**：Excel 内容与屏幕上的表逐行一致，**不在导出层做任何二次聚合**（尤其不得跨 `amount_type` 合计，见「分口径求和」与 D4）。不是 Agent 工具，不触碰只读数据边界。
+_Avoid_: 导出工具、服务端报表（首版导出在前端，非新增 Agent 工具、非网关路由）

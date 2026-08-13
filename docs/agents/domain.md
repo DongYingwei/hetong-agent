@@ -7,20 +7,19 @@
 ```
 /
 ├── CONTEXT-MAP.md                      ← 根索引，指向每个 context 的 CONTEXT.md
-├── docs/adr/                           ← 系统级架构决策（ADR）
+├── docs/adr/                           ← 系统级架构决策（ADR，如有）
+├── apps/                               ← 业务领域上下文
+│   ├── parse-service/                  ← ⑤ 合同解析（README.md 为上下文）
+│   ├── query-agent/
+│   │   ├── CONTEXT.md
+│   │   └── docs/adr/                   ← 该 context 的局部决策
+│   ├── gateway/                        ← ② 网关
+│   └── web/                            ← ① 前端
 └── packages/
-    ├── coremind/
-    │   ├── CONTEXT.md
-    │   └── docs/adr/                   ← 该 context 的局部决策
-    ├── coremind-cli/
-    ├── coremind-config/
-    ├── coremind-protocol/
-    ├── coremind-runtime/
-    ├── coremind-templates/
-    ├── coremind-tools/
-    └── coremind-worker/
-        └── CONTEXT.md
+    └── contracts-db/                   ← ④ 解析写 / 查询读的共享库契约
 ```
+
+> CoreMind 框架各 package（`vendor/coremind/packages/coremind-*`）为技术库，**非业务领域上下文**，不在此列。领域边界与依赖以 `CONTEXT-MAP.md` 为准。
 
 ## 消费者规则
 
