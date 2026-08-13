@@ -60,6 +60,10 @@
 3. 要修抽取质量看「已知遗留 B」。
 4. 规划全景见 `docs/plan/`（requirements/roadmap/tasks + dashboard.html）。
 
+### ⭐ UI/交互主参照（用户 2026-08-13 确认）
+**`demo/经小管-合同管理智能体原型v1.3.html`** 是后续 UI/交互的**唯一主参照**。
+旧稿（`demo/…v1.0.html`、`apps/query-agent/demo/…v1.0.html`、`docs/prototype-reference/demo*.html`）保留但**不再参照**。做前端/页面前先看 v1.3。
+
 ---
 
 ## 一、我们在做什么
