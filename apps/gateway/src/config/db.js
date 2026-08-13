@@ -39,6 +39,21 @@ export async function query(sql, params = []) {
 }
 
 /**
+ * 查询库只读连接池（解析写入的 contracts 库，网关只读消费）。
+ * 台账页/合同详情走这里；用只读角色 jinguan_readonly，物理上防误写（三道防线第③道）。
+ */
+export const queryPool = new pg.Pool({
+  connectionString: config.queryDb.url,
+  max: config.queryDb.connectionLimit,
+});
+
+/** 只读查询查询库 contracts。SQL 用 $n 占位（PG 原生，不做 ? 转换）。 */
+export async function queryRead(sql, params = []) {
+  const res = await queryPool.query(sql, params);
+  return res.rows;
+}
+
+/**
  * 事务封装：回调收到一个 mysql2 兼容的连接对象，暴露 execute(sql, params)
  * 返回 [rowsOrMeta]，其中写入语句可通过 rows[0]/meta.insertId 取新 id。
  * @param {Function} callback async (conn) => result

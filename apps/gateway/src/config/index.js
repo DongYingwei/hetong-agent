@@ -11,13 +11,21 @@ export const config = {
     env: process.env.NODE_ENV || 'development',
   },
   db: {
-    // T10：迁 PostgreSQL（默认端口 5432、默认用户 postgres）
+    // 运营库（基础设施：用户/字典/文件/权限/关键词/模块）。合同台账已退役，改读查询库。
     host: process.env.DB_HOST || '127.0.0.1',
     port: parseInt(process.env.DB_PORT || '5432', 10),
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD || 'postgres',
     database: process.env.DB_NAME || 'contract_assistant',
     connectionLimit: 10,
+  },
+  // 查询库（解析写入、只读消费）——台账页/合同详情读它，用只读角色 jinguan_readonly。
+  // 优先用 PG_READONLY_URL 连接串；缺省时按运营库同主机 + contracts 库拼默认只读串。
+  queryDb: {
+    url:
+      process.env.PG_READONLY_URL ||
+      `postgresql://jinguan_readonly:ro_pw_2026@${process.env.DB_HOST || '127.0.0.1'}:${process.env.DB_PORT || '5432'}/contracts`,
+    connectionLimit: 5,
   },
   jwt: {
     secret: process.env.JWT_SECRET || 'contract_assistant_secret_2026_key',
@@ -32,5 +40,11 @@ export const config = {
   coremind: {
     url: process.env.COREMIND_URL || '',
     timeoutMs: parseInt(process.env.COREMIND_TIMEOUT_MS || '60000', 10),
+  },
+  // 解析侧 FastAPI（PDF→抽取→草稿→核对→入库+建向量）。前端上传/核对经网关代理到它。
+  // 解析同步等待，超时给足（大 PDF 的 MinerU 解析可能数分钟）。
+  parse: {
+    url: process.env.PARSE_URL || 'http://127.0.0.1:8100',
+    timeoutMs: parseInt(process.env.PARSE_TIMEOUT_MS || '600000', 10),
   },
 };

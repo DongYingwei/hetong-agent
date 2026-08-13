@@ -1,86 +1,74 @@
 import Router from '@koa/router';
-import { query, withTransaction } from '../config/db.js';
+import { query, withTransaction, queryRead } from '../config/db.js';
+import { config } from '../config/index.js';
 
 const router = new Router({ prefix: '/api/contract' });
 
 /**
- * 分页获取合同台账列表 (满足 requirement #31 & #37)
+ * 合同台账 = 查询库 contracts（解析写入、已核对入库的真实合同）。
+ * 运营库 contract_ledger 已退役（种子假数据）。这里只读消费查询库。
+ *
+ * 字段映射：查询库 contracts → LedgerView 期望形状。
+ *   · contract_type 是文本（"框架"等），前端用 dict 映射数字码——原样透传文本，
+ *     dict 取不到 label 时前端显示原文，不影响展示。
+ *   · 查询库合同都是 confirmed=1（已核对）→ verify_status 恒为 1。
+ *   · 查询库无 contract_status/warning_status → 给默认值（2=执行中 / 0=正常）。
+ */
+function mapContractRow(r) {
+  return {
+    ...r,
+    contract_status: 2, // 查询库无此列；已入库合同默认"执行中"
+    verify_status: 1, // confirmed=1 → 已核对
+    warning_status: r.expiry_warning ? 1 : 0,
+    has_ai_keyword: r.tag_ai ?? 0,
+  };
+}
+
+/**
+ * 分页获取合同台账列表（读查询库 contracts）。
  */
 router.get('/list', async (ctx) => {
   const page = parseInt(ctx.query.page || '1', 10);
   const pageSize = parseInt(ctx.query.pageSize || '10', 10);
-  const { keyword, contractStatus, contractType, hasAiKeyword, verifyStatus } = ctx.query;
+  const { keyword, hasAiKeyword } = ctx.query;
 
   const offset = (page - 1) * pageSize;
-  let whereSql = 'WHERE delete_status = 0';
+  let whereSql = 'WHERE 1=1';
   const params = [];
+  let n = 0;
 
   if (keyword) {
-    whereSql += ' AND (contract_no LIKE ? OR customer_name LIKE ? OR contract_name LIKE ?)';
-    params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+    whereSql += ` AND (contract_no ILIKE $${++n} OR customer_name ILIKE $${n} OR contract_name ILIKE $${n})`;
+    params.push(`%${keyword}%`);
   }
-
-  if (contractStatus) {
-    whereSql += ' AND contract_status = ?';
-    params.push(parseInt(contractStatus, 10));
-  }
-
-  if (contractType) {
-    whereSql += ' AND contract_type = ?';
-    params.push(parseInt(contractType, 10));
-  }
-
   if (hasAiKeyword !== undefined && hasAiKeyword !== '') {
-    whereSql += ' AND has_ai_keyword = ?';
+    whereSql += ` AND tag_ai = $${++n}`;
     params.push(parseInt(hasAiKeyword, 10));
   }
 
-  if (verifyStatus !== undefined && verifyStatus !== '') {
-    whereSql += ' AND verify_status = ?';
-    params.push(parseInt(verifyStatus, 10));
-  }
+  const countResult = await queryRead(`SELECT COUNT(*) AS total FROM contracts ${whereSql}`, params);
+  const total = parseInt(countResult[0].total, 10);
 
-  const countResult = await query(
-    `SELECT COUNT(*) as total FROM contract_ledger ${whereSql}`,
-    params
-  );
-  const total = countResult[0].total;
+  const listSql = `SELECT * FROM contracts ${whereSql} ORDER BY id DESC LIMIT ${pageSize} OFFSET ${offset}`;
+  const list = (await queryRead(listSql, params)).map(mapContractRow);
 
-  const listSql = `
-    SELECT * FROM contract_ledger ${whereSql} 
-    ORDER BY id DESC 
-    LIMIT ${pageSize} OFFSET ${offset}
-  `;
-  const list = await query(listSql, params);
-
-  ctx.success({
-    list,
-    total,
-    page,
-    pageSize,
-  });
+  ctx.success({ list, total, page, pageSize });
 });
 
 /**
- * 获取单个合同详情与历史记录
+ * 获取单个合同详情（读查询库 contracts）。
  */
 router.get('/detail/:id', async (ctx) => {
-  const id = ctx.params.id;
-  const contracts = await query('SELECT * FROM contract_ledger WHERE id = ? AND delete_status = 0', [id]);
+  const id = parseInt(ctx.params.id, 10);
+  const contracts = await queryRead('SELECT * FROM contracts WHERE id = $1', [id]);
 
   if (contracts.length === 0) {
-    return ctx.fail('合同不存在或已被删除');
+    return ctx.fail('合同不存在');
   }
 
-  const contract = contracts[0];
-  const history = await query(
-    'SELECT * FROM contract_history WHERE contract_id = ? ORDER BY id DESC',
-    [id]
-  );
-
   ctx.success({
-    contract,
-    history,
+    contract: mapContractRow(contracts[0]),
+    history: [], // 查询库无操作历史（那是运营库概念）
   });
 });
 
@@ -143,12 +131,28 @@ router.post('/verify/:id', async (ctx) => {
 });
 
 /**
- * 删除合同
+ * 删除合同 —— 代理到解析侧（删查询库 contracts + 模块命中 + Milvus 向量，保持一致）。
+ * 查询库是解析侧写入域；删除也归解析侧，网关不直接写查询库。
  */
 router.delete('/delete/:id', async (ctx) => {
-  const id = ctx.params.id;
-  await query('UPDATE contract_ledger SET delete_status = 1 WHERE id = ?', [id]);
-  ctx.success(null, '合同台账已软删除');
+  const id = parseInt(ctx.params.id, 10);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  try {
+    const resp = await fetch(`${config.parse.url}/contract/${id}`, {
+      method: 'DELETE',
+      signal: controller.signal,
+    });
+    clearTimeout(timer);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return ctx.fail(data.detail || `删除失败(${resp.status})`, resp.status === 404 ? 404 : 502);
+    }
+    ctx.success(data, '合同已删除（含向量片段）');
+  } catch (e) {
+    clearTimeout(timer);
+    ctx.fail(`删除服务调用失败: ${e.message}`, 502);
+  }
 });
 
 export default router;
