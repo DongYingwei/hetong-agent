@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>经小管合同智能体 · 分期计划与进度</title>
+<style>
+  *,*::before,*::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  img { max-width: 100%; }
+  :root {
+    --ground: #14181c;
+    --surface: #1b2127;
+    --surface-2: #212a31;
+    --line: #2c363f;
+    --line-soft: #232c34;
+    --text: #ccd4dc;
+    --text-dim: #8b97a3;
+    --text-faint: #5a6773;
+    --accent: #3fb98f;
+    --done: #3fb98f;
+    --prog: #e0a852;
+    --blocked: #d9705f;
+    --pending: #566370;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    font-size: 15px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 48px 28px 80px; }
+
+  /* ---- header ---- */
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 12px;
+  }
+  h1 {
+    font-size: clamp(26px, 4vw, 38px);
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    margin: 0 0 10px;
+    text-wrap: balance;
+    color: #f0f4f7;
+  }
+  .sub { color: var(--text-dim); margin: 0 0 4px; max-width: 62ch; }
+  .meta {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-faint);
+    margin-top: 14px;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .meta b { color: var(--text-dim); font-weight: 500; }
+
+  h2 {
+    font-size: 13px;
+    font-family: var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin: 56px 0 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  h2 .n { color: var(--accent); }
+
+  /* ---- flow diagram ---- */
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 24px 12px;
+    overflow-x: auto;
+  }
+  .node {
+    position: relative;
+    padding: 4px 14px;
+    text-align: center;
+    min-width: 150px;
+  }
+  .node:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 34px;
+    right: -8px;
+    width: 16px;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), transparent);
+  }
+  .node .layer {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-faint);
+    letter-spacing: 0.1em;
+  }
+  .node .dot {
+    width: 40px; height: 40px;
+    margin: 8px auto 10px;
+    border-radius: 9px;
+    display: grid; place-items: center;
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+  }
+  .node .name { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+  .node .tech { font-size: 11.5px; color: var(--text-faint); font-family: var(--mono); }
+  .node .st {
+    margin-top: 9px;
+    font-size: 11px;
+    font-family: var(--mono);
+  }
+  .flowcap {
+    font-size: 12.5px;
+    color: var(--text-faint);
+    text-align: center;
+    margin: 14px 0 0;
+    font-family: var(--mono);
+  }
+  .flowcap b { color: var(--accent); font-weight: 500; }
+
+  /* ---- overall progress bar ---- */
+  .overall {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 22px;
+    margin-top: 18px;
+  }
+  .bar {
+    flex: 1;
+    height: 10px;
+    background: var(--surface-2);
+    border-radius: 6px;
+    overflow: hidden;
+    display: flex;
+  }
+  .bar span { height: 100%; display: block; }
+  .bar .b-done { background: var(--done); }
+  .bar .b-prog { background: var(--prog); }
+  .bar .b-pend { background: transparent; }
+  .overall .pct { font-family: var(--mono); font-size: 22px; font-weight: 650; color: #f0f4f7; }
+  .overall .lbl { font-size: 12px; color: var(--text-dim); }
+
+  /* ---- phase cards ---- */
+  .phase {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .phase-head {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--line-soft);
+    flex-wrap: wrap;
+  }
+  .phase-tag {
+    font-family: var(--mono);
+    font-weight: 700;
+    font-size: 15px;
+    padding: 4px 11px;
+    border-radius: 6px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--accent);
+  }
+  .phase-title { font-size: 17px; font-weight: 650; color: #f0f4f7; }
+  .phase-goal { font-size: 13px; color: var(--text-dim); flex-basis: 100%; margin: 0; }
+  .phase-prog {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .mini-bar { width: 90px; height: 7px; background: var(--surface-2); border-radius: 5px; overflow: hidden; }
+  .mini-bar span { display: block; height: 100%; background: var(--done); }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+    font-weight: 500;
+    padding: 12px 22px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+  tbody td {
+    padding: 13px 22px;
+    border-bottom: 1px solid var(--line-soft);
+    vertical-align: top;
+    font-size: 13.5px;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  .step-id { font-family: var(--mono); font-weight: 600; color: var(--text); white-space: nowrap; }
+  .step-do { color: var(--text); }
+  .step-do .task { font-family: var(--mono); font-size: 11.5px; color: var(--accent); }
+  .judge {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text-dim);
+    background: var(--ground);
+    border: 1px solid var(--line-soft);
+    border-radius: 5px;
+    padding: 6px 9px;
+    display: inline-block;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  /* ---- status pills ---- */
+  .pill {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+    padding: 3px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
+  .p-done { color: var(--done); background: color-mix(in srgb, var(--done) 14%, transparent); }
+  .p-done::before { background: var(--done); }
+  .p-prog { color: var(--prog); background: color-mix(in srgb, var(--prog) 14%, transparent); }
+  .p-prog::before { background: var(--prog); }
+  .p-blocked { color: var(--blocked); background: color-mix(in srgb, var(--blocked) 14%, transparent); }
+  .p-blocked::before { background: var(--blocked); }
+  .p-pending { color: var(--text-dim); background: color-mix(in srgb, var(--pending) 20%, transparent); }
+  .p-pending::before { background: var(--pending); }
+
+  .gate {
+    padding: 14px 22px;
+    background: var(--surface-2);
+    border-top: 1px solid var(--line-soft);
+    font-size: 12.5px;
+    color: var(--text-dim);
+  }
+  .gate b { color: var(--accent); font-family: var(--mono); font-weight: 500; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* ---- test baseline strip ---- */
+  .tests { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; }
+  .tcard {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    padding: 16px 18px;
+  }
+  .tcard .tlayer { font-family: var(--mono); font-size: 11px; color: var(--text-faint); letter-spacing: 0.06em; }
+  .tcard .tnum { font-family: var(--mono); font-size: 26px; font-weight: 650; color: #f0f4f7; margin: 6px 0 2px; font-variant-numeric: tabular-nums; }
+  .tcard .tdesc { font-size: 12.5px; color: var(--text-dim); }
+  .tcard.warn .tnum { color: var(--prog); }
+  .tcard.none .tnum { color: var(--text-faint); font-size: 18px; padding: 6px 0; }
+
+  .foot {
+    margin-top: 48px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 12.5px;
+    color: var(--text-faint);
+    font-family: var(--mono);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .foot a { color: var(--text-dim); text-decoration: none; border-bottom: 1px solid var(--line); }
+  a:focus-visible, [tabindex]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">分期计划 · 进度报告</p>
+    <h1>经小管合同智能体</h1>
+    <p class="sub">自然语言问合同 → 只读 SQL 统计 / 向量 RAG 原文 → 带出处、不幻觉的答案。五层架构，三阶段交付，每步有可执行的完成判定。</p>
+    <div class="meta">
+      <span><b>更新</b> 2026-08-13</span>
+      <span><b>主骨</b> T01–T11 · 7 完成 / 2 待端到端 / 2 待做</span>
+      <span><b>阶段</b> P0 进行中</span>
+    </div>
+  </header>
+
+  <!-- ===== FLOW ===== -->
+  <h2><span class="n">01</span> 系统数据流</h2>
+  <div class="flow">
+    <div class="node">
+      <div class="layer">① 前端</div>
+      <div class="dot">Vue</div>
+      <div class="name">AgentSearch</div>
+      <div class="tech">Vue3 + Element</div>
+      <div class="st"><span class="pill p-pending">待接真数据</span></div>
+    </div>
+    <div class="node">
+      <div class="layer">② 网关</div>
+      <div class="dot">Koa</div>
+      <div class="name">鉴权 + 代理</div>
+      <div class="tech">Koa :3001 · PG</div>
+      <div class="st"><span class="pill p-done">完成</span></div>
+    </div>
+    <div class="node">
+      <div class="layer">③ 查询 Agent</div>
+      <div class="dot">TS</div>
+      <div class="name">ReAct 编排</div>
+      <div class="tech">CoreMind</div>
+      <div class="st"><span class="pill p-prog">待端到端</span></div>
+    </div>
+    <div class="node">
+      <div class="layer">④ 共享库</div>
+      <div class="dot">DB</div>
+      <div class="name">PG + Milvus</div>
+      <div class="tech">只读消费</div>
+      <div class="st"><span class="pill p-done">完成</span></div>
+    </div>
+    <div class="node">
+      <div class="layer">⑤ 解析</div>
+      <div class="dot">Py</div>
+      <div class="name">PDF → 入库</div>
+      <div class="tech">MinerU + LLM</div>
+      <div class="st"><span class="pill p-done">完成</span></div>
+    </div>
+  </div>
+  <p class="flowcap">数据流向：⑤ 解析<b> 写入 </b>④ 共享库<b> ← 只读 </b>③ 查询 Agent<b> ← 代理 </b>② 网关<b> ← </b>① 前端展示</p>
+
+  <!-- ===== OVERALL ===== -->
+  <div class="overall">
+    <div>
+      <div class="pct">64<span style="font-size:15px;color:var(--text-dim)">%</span></div>
+      <div class="lbl">总体完成度</div>
+    </div>
+    <div class="bar" role="img" aria-label="总体完成 64%：完成 7、进行中 2、待做 4（共 13 项含缺口任务）">
+      <span class="b-done" style="width:54%"></span>
+      <span class="b-prog" style="width:10%"></span>
+      <span class="b-pend" style="width:36%"></span>
+    </div>
+    <div class="lbl" style="text-align:right">
+      <span style="color:var(--done)">■</span> 完成 &nbsp;
+      <span style="color:var(--prog)">■</span> 进行中 &nbsp;
+      <span style="color:var(--text-faint)">□</span> 待做
+    </div>
+  </div>
+
+  <!-- ===== PHASES ===== -->
+  <h2><span class="n">02</span> 三阶段计划与完成判定</h2>
+
+  <!-- P0 -->
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-tag">P0</span>
+      <span class="phase-title">打通链路</span>
+      <div class="phase-prog">
+        <span>2 / 5</span>
+        <div class="mini-bar" aria-hidden="true"><span style="width:40%"></span></div>
+      </div>
+      <p class="phase-goal">目标：前端问一句合同 → 网关 → CoreMind → 真库，答案真实来自库、带出处。满足 R1–R4 端到端可见。</p>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>步骤</th><th>做什么</th><th>完成判定（可执行）</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="step-id">P0-1</td>
+          <td class="step-do">修 reranker 8B 集成断言 <span class="task">G5</span></td>
+          <td><span class="judge">npx vitest run → 28 绿</span></td>
+          <td><span class="pill p-blocked">1 红</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P0-2</td>
+          <td class="step-do">真实合同入库 <span class="task">G2</span></td>
+          <td><span class="judge">contracts ≥1 · Milvus ≥1</span></td>
+          <td><span class="pill p-done">1 份已入</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P0-3</td>
+          <td class="step-do">/chat wrapper + 升 vendor rc.2 <span class="task">G3</span></td>
+          <td><span class="judge">curl /chat → 返回 content</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P0-4</td>
+          <td class="step-do">eval 核心子集跑通 <span class="task">T09</span></td>
+          <td><span class="judge">coremind eval → 核心 100%</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P0-5</td>
+          <td class="step-do">前端接 /api/agent/chat <span class="task">T11</span></td>
+          <td><span class="judge">人工冒烟：真实答案 + 出处 UI</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="gate"><b>阶段判定</b> &nbsp; vitest 28 绿 · pytest 40 绿 · coremind eval 核心 100% · 前端一条真实链路截图</div>
+  </div>
+
+  <!-- P1 -->
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-tag">P1</span>
+      <span class="phase-title">质量达标</span>
+      <div class="phase-prog">
+        <span>0 / 4</span>
+        <div class="mini-bar" aria-hidden="true"><span style="width:0%"></span></div>
+      </div>
+      <p class="phase-goal">目标：首版 gate 稳、模块化查询（R5）命中准。模块切段改鲁棒 + 网关补冒烟测试。</p>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>步骤</th><th>做什么</th><th>完成判定（可执行）</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="step-id">P1-1</td>
+          <td class="step-do">_slice_module_text 改鲁棒 <span class="task">G4a</span></td>
+          <td><span class="judge">新 pytest：模块段命中 hit=1</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P1-2</td>
+          <td class="step-do">全部测试合同入库 <span class="task">G2 全量</span></td>
+          <td><span class="judge">contracts = 全部份数</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P1-3</td>
+          <td class="step-do">网关自动化冒烟脚本</td>
+          <td><span class="judge">node scripts/smoke.js → 三绿</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P1-4</td>
+          <td class="step-do">eval 扩到覆盖 R1–R5 <span class="task">T09 扩</span></td>
+          <td><span class="judge">coremind eval ≥ 0.9</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="gate"><b>阶段判定</b> &nbsp; coremind eval ≥0.9 · 切段 pytest 绿 · 网关冒烟绿 · 模块查询题通过</div>
+  </div>
+
+  <!-- P2 -->
+  <div class="phase">
+    <div class="phase-head">
+      <span class="phase-tag">P2</span>
+      <span class="phase-title">完善交付</span>
+      <div class="phase-prog">
+        <span>0 / 4</span>
+        <div class="mini-bar" aria-hidden="true"><span style="width:0%"></span></div>
+      </div>
+      <p class="phase-goal">目标：50+20 全量题库含数值真值比对，达生产交付。依赖人工核对（G4b），成本高，放最后。</p>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>步骤</th><th>做什么</th><th>完成判定（可执行）</th><th>状态</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="step-id">P2-1</td>
+          <td class="step-do">人工核对 → 数值真值快照 <span class="task">G4b</span></td>
+          <td><span class="judge">data/ 下真值快照文件</span></td>
+          <td><span class="pill p-pending">待人工</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P2-2</td>
+          <td class="step-do">50+20 全量题库 <span class="task">T09 全量</span></td>
+          <td><span class="judge">eval ≥0.9 含数值比对</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P2-3</td>
+          <td class="step-do">top_k/top_n/阈值调参</td>
+          <td><span class="judge">调参后 eval 不降</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+        <tr>
+          <td class="step-id">P2-4</td>
+          <td class="step-do">片段同步端到端 <span class="task">V5</span></td>
+          <td><span class="judge">改标签 → metadata 一致</span></td>
+          <td><span class="pill p-pending">待做</span></td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="gate"><b>阶段判定</b> &nbsp; 全量题库 eval ≥0.9 含数值比对 · 同步一致性验证通过</div>
+  </div>
+
+  <!-- ===== TEST BASELINE ===== -->
+  <h2><span class="n">03</span> 测试基线（完成判定的依据）</h2>
+  <div class="tests">
+    <div class="tcard">
+      <div class="tlayer">④ 契约</div>
+      <div class="tnum">11</div>
+      <div class="tdesc">verify.sh 断言 · 全绿</div>
+    </div>
+    <div class="tcard">
+      <div class="tlayer">⑤ 解析</div>
+      <div class="tnum">40</div>
+      <div class="tdesc">pytest（fake + 真集成）· 全绿</div>
+    </div>
+    <div class="tcard warn">
+      <div class="tlayer">③ 查询 · vitest</div>
+      <div class="tnum">27<span style="font-size:15px;color:var(--text-faint)">/28</span></div>
+      <div class="tdesc">1 红：rerank 8B 排序回归</div>
+    </div>
+    <div class="tcard">
+      <div class="tlayer">③ 查询 · eval</div>
+      <div class="tnum">11</div>
+      <div class="tdesc">scenarios 场景 · 待跑真</div>
+    </div>
+    <div class="tcard none">
+      <div class="tlayer">② 网关</div>
+      <div class="tnum">无</div>
+      <div class="tdesc">冒烟脚本待补（P1-3）</div>
+    </div>
+    <div class="tcard none">
+      <div class="tlayer">① 前端</div>
+      <div class="tnum">无</div>
+      <div class="tdesc">人工验证 · E2E 非首版</div>
+    </div>
+  </div>
+  <p style="font-size:12.5px;color:var(--text-faint);margin-top:14px;">
+    ⚠️ 网关 / 前端首版无自动化测试，完成判定依赖冒烟脚本 + 人工验证，不与解析 / 查询层的严格断言等同 —— 首版已知取舍，非疏漏。
+  </p>
+
+  <div class="foot">
+    <span>数据实测：contracts 1 · Milvus 248 向量 · reranker Qwen3-8B</span>
+    <span>docs/plan/ · requirements · roadmap · tasks</span>
+  </div>
+</div>
+
+</body>
+</html>

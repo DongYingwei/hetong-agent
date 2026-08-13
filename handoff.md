@@ -1,7 +1,64 @@
 # 经小管合同智能体 · 交接文档
 
 > 写给一个**完全没有上下文的新会话**。读完这份 + `README.md`（有分层图+目录树），就能接着干。
-> 最后更新：2026-08-13 · 状态：**T01–T08 + T10 完成，T09/T11 待办**。附 CoreMind 0.3.0-rc.2 升级评估（五点五节，未实施）。
+> 最后更新：2026-08-13 · 状态：**T01–T08 + T10 完成；解析上传闭环(前端上传→解析→核对→入库+建向量→台账可见→删除)已打通**；T09/T11 部分推进。附 CoreMind 0.3.0-rc.2 升级评估（五点五节，未实施）。
+
+---
+
+## 零、最新进展（2026-08-13 · 解析上传闭环）
+
+> 目标：**前端上传 PDF → 解析抽取 → 人工核对 → 入库 + 建向量 → 台账可见 → 可删除**。已端到端打通（curl + 后端验证过，前端待你最终点一遍）。
+
+### 三个服务现在这样跑（本地，非部署）
+| 服务 | 地址 | 起法 |
+|---|---|---|
+| 解析 FastAPI | `127.0.0.1:8100` | `cd apps/parse-service && PYTHONPATH=src python3 -m uvicorn jinguan_parse.api:build_default_app --factory --host 127.0.0.1 --port 8100` |
+| 网关 Koa | `127.0.0.1:3002` | `cd apps/gateway && node --env-file=.env src/index.js`（**3002 不是 3001**，3001 被 root 的 `node dist/index.js` 别项目占） |
+| 前端 Vite dev | `127.0.0.1:5173` | `cd apps/web && npx vite --host 0.0.0.0 --port 5173` |
+| PG（查询库+运营库） | `127.0.0.1:5433` | Docker 容器 `hetong-contracts-db`（postgres:16）。5432 被别项目 `pg_ip_agent` 占，故用 5433 |
+| Milvus | `localhost:19530` | 容器 `milvus-standalone` |
+
+登录：`admin` / `admin123`。
+
+### 两库分工（重要，见坑2 深化）
+- **查询库 `contracts`**（5433 的 contracts 库）：解析写入的真实合同（52 列），**台账页现已改读这里**。
+- **运营库 `contract_assistant`**（5433 的 contract_assistant 库）：**只保留基础设施表**（sys_user 登录/sys_dict 字典/sys_file 文件/contract_keyword/contract_section/…）。**合同台账表 contract_ledger 已退役**（原型种子假数据，兴晟泽那批）。
+
+### 本轮改了什么（未提交）
+**解析侧 `apps/parse-service/`**：
+- `src/jinguan_parse/api.py`：`/parse` 加 `force` 参数（强制重解析，跳指纹去重）+ 回带草稿字段；新增 `GET /draft/{id}`（读草稿供核对）、`POST /confirm/{id}`（核对入库+建向量，接 overrides 人工修正）、`DELETE /contract/{id}`（删 PG 行+模块命中+Milvus 向量）。
+- `src/jinguan_parse/ingest.py`：`ingest_one` 加 `force`（删同指纹旧草稿重建）。
+- `src/jinguan_parse/keywords.py`：空词表健壮化（空 automaton 不再崩，match 恒返回未命中）。
+- `src/jinguan_parse/taxonomy.py`（新）+ `config.py`：从台账 xlsx「AI业绩关键词」加载 60 词表；`_load_matcher` 路径按仓库根解析。
+- `src/jinguan_parse/vector.py`：`MilvusVectorStore.flush()`（insert 后落盘，查询侧立即可见）。
+- `scripts/ingest_real.py`（新）：一次性批量真实入库脚本。
+- `requirements.txt`：+openpyxl。
+
+**网关 `apps/gateway/`**：
+- `config/index.js`：加 `queryDb`（查询库只读连接串，用 `PG_READONLY_URL` 或默认 jinguan_readonly@5433/contracts）+ `parse`（PARSE_URL 默认 8100）。
+- `config/db.js`：加 `queryPool` + `queryRead()`（只读查查询库）。
+- `routes/contract.js`：`/list` `/detail` 改读查询库 contracts + 字段映射（contract_status=2/verify_status=1/has_ai_keyword=tag_ai）；`/delete/:id` 改为代理解析侧 DELETE。
+- `routes/parse.js`（新）：`/api/parse/{upload,draft,confirm}` 代理到解析侧，upload 透传 `force`。
+- `src/index.js`：挂载 parseRoutes。
+- **`.env` 改了**：DB→PG 5433（原是遗留 MySQL 3306/root）、PORT→3002、加 PARSE_URL。
+
+**前端 `apps/web/`**：
+- `src/api/parseApi.ts`（新）：upload(force)/getDraft/confirm。
+- `src/utils/request.ts`：baseURL 端口 3001→**3002**（可用 VITE_API_PORT 覆盖）。
+- `src/views/FileManagementView.vue`：加「上传合同并解析」按钮 → 解析 → 跳 `/verify?draftId=N`；skip（指纹去重）时弹框问「重新解析」（force）。
+- `src/views/VerifyView.vue`：`?draftId=N` 走草稿模式（读 `/api/parse/draft`，编辑后 `/api/parse/confirm` 入库）；`?id=N` 运营库模式保留。
+
+### 已知遗留（下次接手要注意）
+- **抽取质量问题 B（未修）**：QC-2026015 抽取出客户名/合同名/税率/结算条款✅，但**金额/金额类型/签订日期/起止日期全空**、**模块命中全 0**。金额日期空需查（MinerU 原文有没有 / DeepSeek 抽取覆盖）；模块命中 0 是切段太窄（G4，`_slice_module_text` 只取锚点标题到下一标题，把含 AI 词的技术任务书漏在外）。这就是用户说的"解析结果不对"的真相——不是全错，是部分字段没抽出来，可在核对页人工补。
+- **合同号临时值**：上传走临时文件，`ingest_one` 用文件名兜底 → contract_no 是 `tmpXXXX`。核对页应让用户改成真实合同号（人工核对该做的）。
+- **Milvus stats 缓存虚高**：`get_collection_stats` 的 row_count 不实时（需 compact），判断真实向量数用 `query(filter=...)` 计数。
+- **本轮改动全部未提交**：解析侧/网关/前端一大批改动 + docs/plan/ 规划文档 + 之前的 reranker 8B。
+
+### 下次继续的入口
+1. 先起上面 5 个服务（解析/网关/前端/PG/Milvus）。
+2. 浏览器 5173 登录 → 文件管理「上传合同并解析」→ 核对 → 台账看结果 → 删除。
+3. 要修抽取质量看「已知遗留 B」。
+4. 规划全景见 `docs/plan/`（requirements/roadmap/tasks + dashboard.html）。
 
 ---
 
