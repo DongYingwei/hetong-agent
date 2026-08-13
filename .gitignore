@@ -27,6 +27,7 @@ venv/
 
 # ── CoreMind 会话/运行时 ──
 apps/query-agent/sessions/
+apps/query-agent/.coremind/
 *.log
 
 # ── 编辑器/系统 ──
