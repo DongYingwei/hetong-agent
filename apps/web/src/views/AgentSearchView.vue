@@ -57,7 +57,7 @@
         <div v-for="(msg, idx) in messages" :key="idx" class="space-y-3">
           <!-- 用户消息 -->
           <div v-if="msg.role === 'user'" class="flex justify-end">
-            <div class="bg-[#049667] text-white text-xs py-2.5 px-4 rounded-2xl rounded-tr-none max-w-[80%] leading-relaxed shadow-sm">
+            <div class="bg-[#049667] text-white text-xs py-2.5 px-4 rounded-2xl rounded-tr-none max-w-[80%] leading-relaxed shadow-sm whitespace-pre-wrap">
               {{ msg.content }}
             </div>
           </div>
@@ -69,63 +69,77 @@
                 AI
               </div>
               <div class="bg-white border border-gray-200 text-xs py-3 px-4 rounded-2xl rounded-tl-none leading-relaxed shadow-sm text-[#1A1A1A] min-w-0">
-                <div v-html="msg.content"></div>
+                <!-- Markdown 正文（剥离 SQL 块与表格，只渲染 prose） -->
+                <div class="markdown-body" v-html="renderContent(msg.content)"></div>
 
-                <!-- 嵌入式结果数据表格 (直接在当前气泡内展开/滚动查看，无需弹窗) -->
-                <div v-if="msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden transition-all duration-200">
-                  <div :class="msg.isExpanded ? 'max-h-[360px] overflow-y-auto shadow-inner' : ''">
+                <!-- 结构化结果表格（列名随 SQL 动态变化） -->
+                <div v-if="msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+                  <div :class="msg.isExpanded ? 'max-h-[360px] overflow-y-auto' : ''">
                     <table class="w-full text-xs">
                       <thead class="sticky top-0 z-10 bg-gray-100 shadow-sm">
                         <tr class="text-gray-600 text-left border-b border-gray-200">
-                          <th class="px-3 py-2">编号</th>
-                          <th class="px-3 py-2">名称</th>
-                          <th class="px-3 py-2 text-right">金额</th>
-                          <th class="px-3 py-2 text-center w-16">操作</th>
+                          <th
+                            v-for="col in tableColumns(msg.tableData)"
+                            :key="col"
+                            class="px-3 py-2 font-medium whitespace-nowrap"
+                            :class="isAmountColumn(col) ? 'text-right' : ''"
+                          >{{ columnLabel(col) }}</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr
                           v-for="(row, rIdx) in (msg.isExpanded ? msg.tableData : msg.tableData.slice(0, 5))"
                           :key="rIdx"
-                          :class="rIdx % 2 === 1 ? 'bg-gray-50/70 hover:bg-emerald-50/50' : 'bg-white hover:bg-emerald-50/50'"
-                          class="transition-colors cursor-pointer"
-                          @click="handleOpenRowModal(row)"
+                          :class="[
+                            'transition-colors',
+                            row.isSummary ? 'bg-emerald-50/70 font-semibold' : '',
+                            rIdx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'
+                          ]"
                         >
-                          <td class="px-3 py-2 font-mono font-medium text-[#049667] whitespace-nowrap">{{ row.no }}</td>
-                          <td class="px-3 py-2">{{ row.name }}</td>
-                          <td class="px-3 py-2 text-right font-semibold whitespace-nowrap">{{ row.amount }}</td>
-                          <td class="px-3 py-2 text-center whitespace-nowrap">
-                            <span class="text-[#049667] hover:underline font-medium">查看</span>
-                          </td>
+                          <td
+                            v-for="col in tableColumns(msg.tableData)"
+                            :key="col"
+                            class="px-3 py-2 whitespace-nowrap"
+                            :class="isAmountColumn(col) ? 'text-right font-semibold' : ''"
+                          >{{ cellText(row[col]) }}</td>
                         </tr>
                       </tbody>
                     </table>
                   </div>
 
-                  <!-- 嵌入表格底部的展开/收起状态指示条 -->
                   <div v-if="msg.tableData.length > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t border-gray-200 flex items-center justify-between font-mono">
                     <span v-if="!msg.isExpanded">...共 {{ msg.tableData.length }} 条明细，当前已精简展示前 5 条</span>
-                    <span v-else class="text-emerald-700 font-semibold">✓ 已展开全量 {{ msg.tableData.length }} 条明细（支持向上滑动滚动条查看）</span>
+                    <span v-else class="text-emerald-700 font-semibold">✓ 已展开全量 {{ msg.tableData.length }} 条明细</span>
                     <span class="text-[#049667] cursor-pointer font-bold hover:underline select-none" @click="msg.isExpanded = !msg.isExpanded">
                       {{ msg.isExpanded ? '收起明细 ▲' : '展开查看全部明细 ▼' }}
                     </span>
                   </div>
                 </div>
 
-                <!-- 操作按钮栏 (导出Excel + 在当前展开/收起) -->
+                <!-- SQL 折叠块 -->
+                <details v-if="msg.sql" class="mt-3 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+                  <summary class="px-3 py-2 text-xs font-medium text-gray-600 cursor-pointer select-none hover:text-[#049667]">查看 SQL</summary>
+                  <pre class="px-3 pb-3 overflow-x-auto text-[11px] font-mono text-gray-700 whitespace-pre-wrap"><code>{{ msg.sql }}</code></pre>
+                </details>
+
+                <!-- RAG 依据出处 -->
+                <div v-if="msg.citations && msg.citations.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+                  <div class="px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600 border-b border-gray-100">依据出处</div>
+                  <div v-for="(c, ci) in msg.citations" :key="ci" class="px-3 py-2 text-xs border-b border-gray-50 last:border-b-0">
+                    <div class="flex items-center gap-2 font-medium text-[#049667]">
+                      <span>{{ c.contract_no || '—' }}</span>
+                      <span class="text-gray-400">·</span>
+                      <span class="text-gray-600">{{ c.field }}</span>
+                      <span v-if="c.score !== undefined" class="ml-auto text-[10px] text-gray-400 font-mono">相关度 {{ (c.score * 100).toFixed(0) }}%</span>
+                    </div>
+                    <div class="mt-1 text-gray-700 leading-relaxed">{{ c.content }}</div>
+                  </div>
+                </div>
+
+                <!-- 导出按钮 -->
                 <div v-if="msg.tableData && msg.tableData.length > 0" class="flex items-center gap-2 mt-3 pt-2 border-t border-gray-100">
                   <el-button size="small" style="height: 28px; font-size: 12px;" @click="handleExportResult(msg)">
                     <el-icon class="mr-1"><Download /></el-icon> 导出完整Excel
-                  </el-button>
-                  <el-button
-                    v-if="msg.tableData.length > 5"
-                    type="primary"
-                    link
-                    size="small"
-                    style="color: #049667;"
-                    @click="msg.isExpanded = !msg.isExpanded"
-                  >
-                    {{ msg.isExpanded ? '收起明细' : `查看全部明细 (${msg.tableData.length}条)` }}
                   </el-button>
                 </div>
               </div>
@@ -186,18 +200,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 查看具体合同详情 modal -->
-    <ContractViewModal
-      v-model="showContractModal"
-      :contract-data="selectedContractRow"
-    />
-
-    <!-- 查看具体订单详情 modal -->
-    <OrderDetailModal
-      v-model="showOrderModal"
-      :order="selectedOrderRow"
-    />
   </div>
 </template>
 
@@ -205,56 +207,92 @@
 import { ref, nextTick, onMounted } from 'vue';
 import { Plus, ChatDotSquare, Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { agentApi } from '../api';
+import { agentApi, type Citation, type TableRowItem } from '../api/agentApi';
 import { buildFaithfulWorkbook, downloadWorkbook, type ExportRow } from '../utils/excelExporter';
-import ContractViewModal from '../components/modals/ContractViewModal.vue';
-import OrderDetailModal from '../components/modals/OrderDetailModal.vue';
-
-interface TableRowItem {
-  no: string;
-  name: string;
-  amount: string;
-  customer?: string;
-  status?: string;
-  rawType?: 'contract' | 'order';
-  isSummary?: boolean;
-}
+import { renderAssistantContent } from '../utils/markdown';
 
 interface MessageItem {
   role: 'user' | 'assistant';
   content: string;
   tableData?: TableRowItem[];
-  type?: 'contract' | 'order';
-  totalCount?: number;
+  sql?: string;
+  citations?: Citation[];
   isExpanded?: boolean;
 }
 
-// 动态生成全量 42 份合同明细数据
-function generate42Contracts(): TableRowItem[] {
-  const customers = ['中国移动通信集团', '中国电信集团', '中国联通股份', '南京大学', '华为技术有限公司', '百度在线', '科大讯飞', '中兴通讯', '国家电网', '腾讯科技', '阿里巴巴', '字节跳动', '招商银行', '平安科技'];
-  const titles = ['智能运维服务合同', '数据标注平台开发协议', '智能客服系统建设合同', '智慧校园平台建设合同', 'AIOps平台开发协议', '5G基站网优维护合同', '算法模型训练标注合同', 'NLP语音机器人采购协议', '智能知识库构建合同', '自动化巡检系统技术合同', '计算机视觉识别服务协议', '大模型微调训练合同', '智能推荐引擎开发合同'];
-  const statuses = ['已签约', '已签约', '已签约', '已闭环', '已签约', '流水中'];
+// DB 列名 → 中文展示名。未命中的列按原始列名展示（不臆造、不补默认）。
+const COLUMN_LABELS: Record<string, string> = {
+  id: 'ID',
+  contract_no: '合同号',
+  contract_name: '合同名称',
+  customer_name: '客户名称',
+  signing_entity: '签约主体',
+  contract_type: '合同类型',
+  customer_contract_no: '客方合同号',
+  sign_date: '签订日期',
+  start_date: '开始日期',
+  end_date: '结束日期',
+  sign_year: '签订年份',
+  sign_quarter: '签订季度',
+  sign_half: '半年',
+  end_year: '结束年份',
+  amount: '金额',
+  amount_type: '金额口径',
+  tax_rate: '税率',
+  post_eval: '售后评价',
+  deposit_amount: '保证金',
+  contract_status: '合同状态',
+  verify_status: '核验状态',
+  assessment_line: '评估条线',
+  has_ai_keyword: 'AI标签',
+  contract_count: '数量',
+  total_amount: '总金额',
+  count: '数量',
+  cnt: '数量',
+  sum: '合计',
+  total: '合计',
+  order_no: '订单号',
+  order_name: '订单名称',
+  project_no: '项目号',
+  project_name: '项目名称',
+};
 
-  const list: TableRowItem[] = [];
-  for (let i = 0; i < 42; i++) {
-    const noNum = 892 - i;
-    const noStr = `HT-2026-0${noNum < 100 ? (noNum < 10 ? '0' + noNum : noNum) : noNum}`;
-    const name = titles[i % titles.length] + (i >= 13 ? ` (第${Math.floor(i / 13) + 1}期)` : '');
-    const cust = customers[i % customers.length];
-    const amountVal = Math.floor(500 + ((i * 37) % 115)) * 10000 + 80000;
-    const amountStr = `¥${amountVal.toLocaleString()}`;
-    const st = statuses[i % statuses.length];
-    list.push({
-      no: noStr,
-      name,
-      amount: amountStr,
-      customer: cust,
-      status: st,
-      rawType: 'contract',
-    });
+/** 取表格列（行里有哪些键就展示哪些列，排除 isSummary 标记）。 */
+function tableColumns(rows: TableRowItem[]): string[] {
+  const cols = new Set<string>();
+  for (const row of rows) {
+    for (const key of Object.keys(row)) {
+      if (key !== 'isSummary') cols.add(key);
+    }
   }
-  return list;
+  return Array.from(cols);
 }
+
+function columnLabel(col: string): string {
+  return COLUMN_LABELS[col] ?? col;
+}
+
+/** 金额/数量类列右对齐。 */
+function isAmountColumn(col: string): boolean {
+  return /amount|count|金额|数量|金额口径/.test(col);
+}
+
+/** 单元格展示：对象/数组 JSON 化，null/undefined 显示空。 */
+function cellText(v: unknown): string {
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
+}
+
+function renderContent(md: string): string {
+  return renderAssistantContent(md);
+}
+
+const WELCOME = `您好，我是**综合检索智能体**。您可以问我关于合同和订单的任何问题，例如：
+
+- "服务内容包含AI的合同有多少，提供编号和总金额"
+- "2026年签订的运维合同有哪些"
+- "含AI关键词的订单总金额是多少"`;
 
 const historyList = ref([
   { title: '服务内容包含AI智能体的合同', time: '2026-08-06 14:32', type: 'contract' },
@@ -270,32 +308,8 @@ const inputQuery = ref('');
 const sending = ref(false);
 const chatScrollRef = ref<HTMLDivElement | null>(null);
 
-// 详情弹窗控制
-const showContractModal = ref(false);
-const selectedContractRow = ref<any>(null);
-const showOrderModal = ref(false);
-const selectedOrderRow = ref<any>(null);
-
 const messages = ref<MessageItem[]>([
-  {
-    role: 'assistant',
-    content: `您好，我是<strong>综合检索智能体</strong>。您可以问我关于合同和订单的任何问题，例如：<br>
-    · <span class="text-[#049667]">"服务内容包含AI的合同有多少，提供编号和总金额"</span><br>
-    · <span class="text-[#049667]">"2026年签订的运维合同有哪些"</span><br>
-    · <span class="text-[#049667]">"含AI关键词的订单总金额是多少"</span>`,
-  },
-  {
-    role: 'user',
-    content: '帮我看下服务内容条款下包含AI智能体的合同有多少，请提供这些合同的编号，还有总金额。',
-  },
-  {
-    role: 'assistant',
-    type: 'contract',
-    totalCount: 42,
-    isExpanded: false,
-    content: `为您检索到 <strong>服务内容</strong> 板块下包含 <strong>AI/智能体</strong> 关键词的合同共 <strong>42 份</strong>，总金额 <strong>¥186,320,000</strong>。<br><br>相关合同明细列表如下：`,
-    tableData: generate42Contracts(),
-  },
+  { role: 'assistant', content: WELCOME },
 ]);
 
 onMounted(() => {
@@ -312,52 +326,17 @@ function scrollToBottom() {
 
 function handleNewChat() {
   activeHistoryIndex.value = -1;
-  messages.value = [
-    {
-      role: 'assistant',
-      content: `您好，我是<strong>综合检索智能体</strong>。请随时告诉我您想检索的合同或订单信息！`,
-    },
-  ];
+  messages.value = [{ role: 'assistant', content: WELCOME }];
 }
 
+/** 点击历史条目：填入标题作为新提问重新检索（真实链路，不再注入假数据）。 */
 function selectHistory(index: number) {
   activeHistoryIndex.value = index;
   const item = historyList.value[index];
-  if (item.type === 'order') {
-    messages.value = [
-      {
-        role: 'user',
-        content: item.title,
-      },
-      {
-        role: 'assistant',
-        type: 'order',
-        totalCount: 2,
-        isExpanded: false,
-        content: `为您检索到包含 <strong>AI</strong> 关键词的订单共 <strong>2 条</strong>，明细金额 <strong>¥71,052.54</strong>。<br><br>相关订单列表如下：`,
-        tableData: [
-          { no: 'HSKJ/C-RJ-2025069-122', name: '2025-2026年度软件开发外包服务框架合同-华苏', amount: '¥36,923.25', customer: '诺博汽车系统有限公司', status: '未确认', rawType: 'order' },
-          { no: 'HSKJ/C-RJ-2025069-121', name: '2025-2026年度软件开发外包服务框架合同-华苏', amount: '¥34,129.29', customer: '诺博汽车系统有限公司', status: '未确认', rawType: 'order' },
-        ],
-      },
-    ];
-  } else {
-    messages.value = [
-      {
-        role: 'user',
-        content: item.title,
-      },
-      {
-        role: 'assistant',
-        type: 'contract',
-        totalCount: 42,
-        isExpanded: false,
-        content: `为您检索到包含相关关键词的合同共 <strong>42 份</strong>，详情如下：`,
-        tableData: generate42Contracts(),
-      },
-    ];
+  if (item) {
+    inputQuery.value = item.title;
+    handleSend();
   }
-  scrollToBottom();
 }
 
 function fillQuery(text: string) {
@@ -369,50 +348,28 @@ async function handleSend() {
   const query = inputQuery.value.trim();
   if (!query) return;
 
-  messages.value.push({
-    role: 'user',
-    content: query,
-  });
+  messages.value.push({ role: 'user', content: query });
   inputQuery.value = '';
   scrollToBottom();
 
   sending.value = true;
   try {
-    const res = await agentApi.chat(query, messages.value.map((m) => ({ role: m.role, content: m.content })));
-    if (res.code === 200 && res.data && res.data.content) {
+    // history 只发本轮之前的对话（不含刚 push 的当前提问）。
+    const history = messages.value.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
+    const res = await agentApi.chat({ message: query, history });
+    if (res.code === 200 && res.data) {
       messages.value.push({
         role: 'assistant',
-        content: res.data.content,
+        content: res.data.content || '',
+        tableData: res.data.tableData,
+        sql: res.data.sql,
+        citations: res.data.citations,
       });
     } else {
-      if (query.includes('订单')) {
-        messages.value.push({
-          role: 'assistant',
-          type: 'order',
-          totalCount: 2,
-          isExpanded: false,
-          content: `为您在数据库中检索到符合条件 <strong>"${query}"</strong> 的订单明细如下：`,
-          tableData: [
-            { no: 'HSKJ/C-RJ-2025069-122', name: '2025-2026年度软件开发外包服务框架合同-华苏', amount: '¥36,923.25', customer: '诺博汽车系统有限公司', status: '未确认', rawType: 'order' },
-            { no: 'HSKJ/C-RJ-2025069-121', name: '2025-2026年度软件开发外包服务框架合同-华苏', amount: '¥34,129.29', customer: '诺博汽车系统有限公司', status: '未确认', rawType: 'order' },
-          ],
-        });
-      } else {
-        messages.value.push({
-          role: 'assistant',
-          type: 'contract',
-          totalCount: 42,
-          isExpanded: false,
-          content: `为您在数据库中检索到符合条件 <strong>"${query}"</strong> 的合同共 <strong>42 份</strong>，明细数据如下：`,
-          tableData: generate42Contracts(),
-        });
-      }
+      messages.value.push({ role: 'assistant', content: res.msg || '查询失败，请稍后重试' });
     }
   } catch (e) {
-    messages.value.push({
-      role: 'assistant',
-      content: `检索结果：已在数据库中匹配到相关数据。`,
-    });
+    messages.value.push({ role: 'assistant', content: '查询请求失败，请检查查询智能体服务是否可用。' });
   } finally {
     sending.value = false;
     scrollToBottom();
@@ -424,7 +381,7 @@ function handleClearChat() {
   ElMessage.success('对话记录已清空');
 }
 
-// 忠实导出检索结果:只落真实 tableData 的字段,不补默认值、不兜底假数据、不跨口径合计(ADR-0005 / D2 / D4)。
+// 忠实导出检索结果：列无关、不补默认值、不跨口径合计（ADR-0005 / 12b / 12c）。
 async function handleExportResult(msg: MessageItem) {
   const list = msg.tableData;
   if (!list || list.length === 0) {
@@ -432,65 +389,26 @@ async function handleExportResult(msg: MessageItem) {
     return;
   }
 
-  // 映射当前展示的这几列(合同号/名称/金额/客户/状态),不补默认值、不臆造后端未给的列。
-  // 注:通用列无关的落盘逻辑在 buildFaithfulWorkbook;此处按 TableRowItem 的现有字段取值。
+  const cols = tableColumns(list);
   const rows: ExportRow[] = list.map((item) => {
-    const row: ExportRow = {
-      合同号: item.no,
-      名称: item.name,
-      金额: item.amount ?? null,
-    };
-    if (item.customer !== undefined) row['客户'] = item.customer;
-    if (item.status !== undefined) row['状态'] = item.status;
+    const row: ExportRow = {};
+    for (const c of cols) {
+      const v = item[c];
+      if (v === null || v === undefined) row[columnLabel(c)] = null;
+      else if (typeof v === 'object') row[columnLabel(c)] = JSON.stringify(v);
+      else row[columnLabel(c)] = v as string | number | boolean;
+    }
     if (item.isSummary) row.isSummary = true;
     return row;
   });
 
-  const prefix = msg.type === 'order' ? '订单检索明细' : '合同检索明细';
   try {
     const wb = buildFaithfulWorkbook(rows);
-    await downloadWorkbook(wb, prefix);
-    ElMessage.success(`${prefix} Excel 已导出（共 ${rows.length} 条）`);
+    await downloadWorkbook(wb, '检索结果明细');
+    ElMessage.success(`检索结果明细 Excel 已导出（共 ${rows.length} 条）`);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     ElMessage.error(`导出失败:${reason}`);
-  }
-}
-
-function handleOpenRowModal(row: TableRowItem) {
-  if (row.rawType === 'order' || row.no.includes('HSKJ') || row.no.includes('Z26')) {
-    selectedOrderRow.value = {
-      id: 1,
-      project_no: 'V250056',
-      project_name: row.name,
-      order_no: row.no,
-      order_name: row.name,
-      customer_name: row.customer || '诺博汽车系统有限公司',
-      assessment_line: '软件',
-      start_date: '2026-04-01',
-      end_date: '2026-06-30',
-      tax_rate: 6,
-      amount: 36923.25,
-      income_confirmed: 0,
-      attachment_count: 3,
-      has_eml: '是',
-      hit_keyword: 'AI',
-    };
-    showOrderModal.value = true;
-  } else {
-    selectedContractRow.value = {
-      id: 1,
-      contract_no: row.no,
-      customer_name: row.customer || '中国移动通信集团',
-      contract_name: row.name,
-      contract_type: 1,
-      sign_date: '2026-06-15',
-      amount: 5800000,
-      assessment_line: '信息技术',
-      contract_status: 2,
-      verify_status: 1,
-    };
-    showContractModal.value = true;
   }
 }
 </script>
