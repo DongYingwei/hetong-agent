@@ -11,4 +11,5 @@ export * from './homepageApi';
 export * from './roleApi';
 export * from './departmentApi';
 export * from './orderApi';
+export * from './parseApi';
 

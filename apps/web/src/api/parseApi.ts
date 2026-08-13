@@ -1,0 +1,75 @@
+import request from '../utils/request';
+import type { ApiResponse } from '../types';
+
+/** 草稿表单字段（解析抽取的 AI 字段 + 手工列，供人工核对编辑）。 */
+export interface DraftForm {
+  contract_no: string;
+  customer_name?: string;
+  contract_name?: string;
+  contract_type?: string;
+  sign_date?: string;
+  start_date?: string;
+  end_date?: string;
+  amount_type?: string;
+  amount?: number | null;
+  tax_rate?: string;
+  settlement_terms?: string;
+  assessment_line?: string;
+  status?: string;
+  tag_ai?: number;
+  [k: string]: unknown;
+}
+
+export interface ModuleHit {
+  module_key: string;
+  hit: number;
+  keywords?: string | null;
+  category?: string | null;
+  raw_text?: string | null;
+}
+
+export interface DraftData {
+  draft_id: number;
+  form: DraftForm;
+  module_hits: ModuleHit[];
+  mineru_md_preview: string;
+  mineru_md_len: number;
+}
+
+/** 上传 /parse 的返回：解析后即入草稿，回带草稿字段。 */
+export interface ParseUploadResult {
+  path: string;
+  status: 'ingested' | 'skipped_duplicate' | 'failed';
+  draft_id: number | null;
+  draft?: DraftData;
+}
+
+export interface ConfirmResult {
+  contract_id: number;
+  chunks: number;
+  vectorized: boolean;
+}
+
+/**
+ * 解析侧代理 API —— 上传 PDF → 解析入草稿 → 人工核对 → 入库+建向量。
+ * 全经网关 /api/parse/* 转发到解析 FastAPI（解析同步等待，超时给足）。
+ */
+export const parseApi = {
+  /** 上传 PDF，同步解析入草稿（大 PDF 可能数分钟）。force=true 跳过指纹去重、强制重解析。 */
+  upload(formData: FormData, force = false): Promise<ApiResponse<ParseUploadResult>> {
+    return request.post(`/parse/upload${force ? '?force=true' : ''}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 600000, // 解析同步等待，覆盖默认超时
+    });
+  },
+
+  /** 读草稿全字段供核对页展示。 */
+  getDraft(draftId: number): Promise<ApiResponse<DraftData>> {
+    return request.get(`/parse/draft/${draftId}`);
+  },
+
+  /** 人工核对入库 + 建向量。overrides = 人工修正的字段。 */
+  confirm(draftId: number, overrides: Record<string, unknown>): Promise<ApiResponse<ConfirmResult>> {
+    return request.post(`/parse/confirm/${draftId}`, { overrides }, { timeout: 600000 });
+  },
+};

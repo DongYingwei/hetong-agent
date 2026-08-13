@@ -12,10 +12,21 @@
             action=""
             :auto-upload="true"
             :show-file-list="false"
+            accept=".pdf"
+            :http-request="handleParseUpload"
+          >
+            <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" :loading="parsing">
+              <el-icon class="mr-1"><Upload /></el-icon> 上传合同并解析
+            </el-button>
+          </el-upload>
+          <el-upload
+            action=""
+            :auto-upload="true"
+            :show-file-list="false"
             :http-request="handleUpload"
           >
-            <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" :loading="uploading">
-              <el-icon class="mr-1"><Upload /></el-icon> 上传文件
+            <el-button size="large" :loading="uploading">
+              <el-icon class="mr-1"><Upload /></el-icon> 仅上传文件
             </el-button>
           </el-upload>
           <el-button type="warning" plain size="large" @click="handleTriggerCleanup">
@@ -109,14 +120,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useRouter } from 'vue-router';
 import { Upload, Search, Delete, WarningFilled } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { fileApi } from '../api';
+import { fileApi, parseApi } from '../api';
 import { formatDate, formatFileSize } from '../utils/formatters';
 import type { SysFile } from '../types';
 
+const router = useRouter();
 const loading = ref(false);
 const uploading = ref(false);
+const parsing = ref(false);
 const keyword = ref('');
 const tableData = ref<SysFile[]>([]);
 const total = ref(0);
@@ -141,6 +155,57 @@ async function loadData() {
     }
   } finally {
     loading.value = false;
+  }
+}
+
+// F1：上传合同 PDF → 同步解析入草稿 → 拿 draft_id → 跳人工核对页。
+function handleParseUpload(options: any) {
+  const file = options.file as File;
+  if (!file.name.toLowerCase().endsWith('.pdf')) {
+    ElMessage.warning('合同解析仅支持 PDF 文件');
+    return;
+  }
+  doParse(file, false);
+}
+
+async function doParse(file: File, force: boolean) {
+  const formData = new FormData();
+  formData.append('file', file);
+  parsing.value = true;
+  const tip = ElMessage({
+    message: `正在解析《${file.name}》，大文件可能需要数分钟，请稍候…`,
+    type: 'info',
+    duration: 0,
+  });
+  try {
+    const res = await parseApi.upload(formData, force);
+    tip.close();
+    if (res.code === 200 && res.data.draft_id) {
+      ElMessage.success('解析完成，进入人工核对');
+      router.push({ path: '/verify', query: { draftId: res.data.draft_id } });
+      return;
+    }
+    if (res.data?.status === 'skipped_duplicate') {
+      // 指纹去重：该合同此前已解析。问用户是否强制重新解析。
+      parsing.value = false;
+      try {
+        await ElMessageBox.confirm(
+          '该合同此前已解析过（内容指纹相同）。是否重新解析一遍？',
+          '合同已存在',
+          { confirmButtonText: '重新解析', cancelButtonText: '取消', type: 'warning' }
+        );
+        await doParse(file, true); // 强制重解析
+      } catch {
+        /* 用户取消 */
+      }
+      return;
+    }
+    ElMessage.error('解析未返回草稿，请检查解析服务');
+  } catch (e: any) {
+    tip.close();
+    ElMessage.error(`解析失败：${e?.response?.data?.msg || e?.message || '未知错误'}`);
+  } finally {
+    parsing.value = false;
   }
 }
 

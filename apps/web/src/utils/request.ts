@@ -2,14 +2,16 @@ import axios from 'axios';
 import { ElMessage } from 'element-plus';
 
 /**
- * 动态获取 API 根地址 (解决局域网/内网其他电脑访问时请求 localhost:3001 导致 Network Error 问题)
+ * 动态获取 API 根地址 (解决局域网/内网其他电脑访问时请求 localhost 导致 Network Error 问题)
+ * 网关端口默认 3002（3001 被本机其他服务占用）；可用 VITE_API_PORT 覆盖。
  */
+const API_PORT = import.meta.env.VITE_API_PORT || '3002';
 const getBaseUrl = () => {
   if (typeof window !== 'undefined' && window.location && window.location.hostname) {
     const host = window.location.hostname;
-    return `http://${host}:3001/api`;
+    return `http://${host}:${API_PORT}/api`;
   }
-  return 'http://localhost:3001/api';
+  return `http://localhost:${API_PORT}/api`;
 };
 
 /**

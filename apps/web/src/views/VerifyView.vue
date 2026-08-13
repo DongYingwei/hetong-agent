@@ -409,7 +409,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Back, Search, ZoomIn, ZoomOut, Close } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { contractApi } from '../api';
+import { contractApi, parseApi } from '../api';
 
 const route = useRoute();
 const router = useRouter();
@@ -418,6 +418,8 @@ const isReadOnly = computed(() => route.query.readonly === 'true');
 const isMultiMode = computed(() => route.query.mode === 'multi');
 const activeTabIndex = ref(0);
 const targetId = computed(() => (route.query.id ? Number(route.query.id) : null));
+// 解析草稿模式：?draftId=N（对接 /api/parse/draft，人工核对入正式库+建向量）。
+const draftId = computed(() => (route.query.draftId ? Number(route.query.draftId) : null));
 
 // 多合同核对 Tab 视图数据
 const fileTabs = ref([
@@ -515,6 +517,44 @@ const fileTabs = ref([
 ]);
 
 onMounted(async () => {
+  // 解析草稿模式：从 /api/parse/draft 读抽取字段供人工核对（优先于运营库模式）。
+  if (draftId.value) {
+    try {
+      const res = await parseApi.getDraft(draftId.value);
+      const tab = fileTabs.value[0];
+      if (res.code === 200 && res.data && tab) {
+        const f = res.data.form || {};
+        const form = tab.form as any;
+        tab.id = res.data.draft_id;
+        tab.fileName = (f.contract_name || f.contract_no || '待核对合同') + '.pdf';
+        form.contractNo = f.contract_no || '';
+        form.customerName = f.customer_name || '';
+        form.contractName = f.contract_name || '';
+        form.assessmentLine = f.assessment_line || '';
+        form.signingEntity = f.signing_entity || '';
+        form.customerContractNo = f.customer_contract_no || '';
+        form.signDate = f.sign_date || '';
+        form.startDate = f.start_date || '';
+        form.endDate = f.end_date || '';
+        form.amountAttr = f.amount_type || '';
+        form.amount = f.amount != null ? String(f.amount) : '';
+        form.taxRate = f.tax_rate || '';
+        form.settlementTerms = f.settlement_terms || '';
+        // 模块命中 → 核对页关键词区（keywords 是逗号分隔字符串）
+        const modMap: Record<string, string> = { service: '服务内容', tech: '技术要求', role: '岗位说明', staff: '人员需求' };
+        const kw: Record<string, string[]> = { 服务内容: [], 技术要求: [], 岗位说明: [], 人员需求: [] };
+        for (const h of res.data.module_hits || []) {
+          const name = modMap[h.module_key];
+          if (name && h.keywords) kw[name] = String(h.keywords).split(',').filter(Boolean);
+        }
+        form.keywords = kw;
+      }
+    } catch (e) {
+      ElMessage.error('读取解析草稿失败');
+    }
+    return;
+  }
+  // 运营库模式（旧）：从 contractApi 读已入库合同。
   if (targetId.value) {
     try {
       const res = await contractApi.getDetail(targetId.value);
@@ -570,7 +610,40 @@ function addKeywordPrompt(sectionKey: string) {
 async function handleSaveCurrent() {
   if (isReadOnly.value) return;
 
-  // 1. 调用后端 API，更新核对状态 verify_status = 1 (已核对)
+  // 解析草稿模式：把人工编辑后的字段作为 overrides 提交 → 入正式库 + 建向量。
+  if (draftId.value) {
+    const f = currentForm.value;
+    const overrides: Record<string, unknown> = {
+      contract_no: f.contractNo,
+      customer_name: f.customerName,
+      contract_name: f.contractName,
+      assessment_line: f.assessmentLine,
+      signing_entity: f.signingEntity,
+      customer_contract_no: f.customerContractNo,
+      sign_date: f.signDate || null,
+      start_date: f.startDate || null,
+      end_date: f.endDate || null,
+      amount_type: f.amountAttr || null,
+      amount: f.amount ? Number(String(f.amount).replace(/[^\d.]/g, '')) : null,
+      tax_rate: f.taxRate || null,
+      settlement_terms: f.settlementTerms || null,
+    };
+    try {
+      const res = await parseApi.confirm(draftId.value, overrides);
+      if (res.code === 200) {
+        currentTab.value.verified = true;
+        ElMessage.success(`核对入库成功！已建向量 ${res.data.chunks} 个片段，合同 id=${res.data.contract_id}`);
+        router.push('/ledger');
+      } else {
+        ElMessage.error(res.msg || '核对入库失败');
+      }
+    } catch (e: any) {
+      ElMessage.error(`核对入库失败：${e?.response?.data?.msg || e?.message || '未知错误'}`);
+    }
+    return;
+  }
+
+  // 运营库模式（旧）：更新核对状态 verify_status = 1。
   const idToVerify = currentTab.value.id || targetId.value;
   if (idToVerify) {
     try {
