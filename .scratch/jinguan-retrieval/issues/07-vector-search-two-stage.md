@@ -17,7 +17,7 @@
 
 > ✅ **端点契约已确认(2026-08-12 真调)**——G2 大部分解决：
 > - **embedding** `http://192.168.121.33:8008/v1/embeddings`（vLLM **OpenAI 兼容**），模型 `Qwen3-Embedding-4B`，**2560 维**。TS 侧用 openai 兼容 client 调即可。
-> - **reranker** `http://192.168.121.33:8012/v1/rerank`（vLLM），模型 `Qwen3-Reranker-4B`，max_len 1024。
+> - **reranker** `http://192.168.121.33:8012/v1/rerank`（vLLM），模型 `Qwen3-Reranker-8B`，max_len 1024。
 > - **Milvus** `localhost:19530`（standalone v2.4.5），collection **`contract_chunks`** 已由 T04-切片2 建好：字段 `vector(2560,COSINE)` + metadata 四字段(`contract_id/contract_no/field/module_category`) + `content`。**T07 直接查此 collection，schema 已定，勿重建**。
 > - `module_category` 存空串（非 None）；`field` 对模块段=module_key（service/tech/…）。标量过滤按这些字段。
 >

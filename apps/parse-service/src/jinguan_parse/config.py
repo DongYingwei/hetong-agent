@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     embed_base_url: str = "http://192.168.121.33:8008"
     embed_model: str = "Qwen3-Embedding-4B"
     rerank_base_url: str = "http://192.168.121.33:8012"
-    rerank_model: str = "Qwen3-Reranker-4B"
+    rerank_model: str = "Qwen3-Reranker-8B"
 
     milvus_uri: str = "http://localhost:19530"
     pg_url: str = "postgresql://postgres:pw@localhost:5432/contracts"

@@ -172,7 +172,7 @@ CoreMind 定位是"配置驱动 Agent 框架"，**没有原生 RAG/向量/embedd
 - **MinerU** `http://192.168.121.33:8000/file_parse`，默认 `backend=pipeline`（自包含无幻觉，已验证）。
 - **LLM** DeepSeek 官方云，模型 `deepseek-v4-pro`，thinking 模式 → instructor 用 `Mode.JSON`（否则 400）。
 - **embedding** `.33:8008` Qwen3-Embedding-4B（vLLM OpenAI 兼容，**2560 维**）。
-- **reranker** `.33:8012` Qwen3-Reranker-4B。
+- **reranker** `.33:8012` Qwen3-Reranker-8B。
 - **Milvus** `localhost:19530`（v2.4.5），collection `contract_chunks` 由 T04 建。
 - 查询侧 env：`PG_READONLY_URL`（G1）、`EMBED_BASE_URL`/`RERANK_BASE_URL`/`MILVUS_URI`。
 - 网关 env：`DB_*`（PG，默认 5432/postgres）、`JWT_SECRET`、`COREMIND_URL`、`DEEPSEEK_API_KEY`。

@@ -6,7 +6,7 @@
  *                Qwen3-Embedding-4B，2560 维。
  *   · Milvus:    localhost:19530（standalone v2.4.5），collection contract_chunks
  *                （vector 2560 COSINE + metadata 四字段 + content），由 T04 建好，只读消费。
- *   · reranker:  http://192.168.121.33:8012/v1/rerank（vLLM），Qwen3-Reranker-4B。
+ *   · reranker:  http://192.168.121.33:8012/v1/rerank（vLLM），Qwen3-Reranker-8B。
  *
  * 设计：每个客户端是小接口后的深模块，端点从 env 读；依赖注入 → 单测用 fake，不打真服务
  * （对齐解析侧 §S3 Testing Decisions）。对 CoreMind 只暴露 read（契合 network:deny）。
@@ -111,7 +111,7 @@ export class QwenReranker implements Reranker {
   private url: string;
   private model: string;
   constructor(baseUrl = process.env.RERANK_BASE_URL ?? "http://192.168.121.33:8012",
-              model = process.env.RERANK_MODEL ?? "Qwen3-Reranker-4B") {
+              model = process.env.RERANK_MODEL ?? "Qwen3-Reranker-8B") {
     this.url = baseUrl + "/v1/rerank";
     this.model = model;
   }

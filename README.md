@@ -146,7 +146,7 @@ hetong-agent/
 | MinerU | `http://192.168.121.33:8000/file_parse` | **默认 backend=pipeline**（自包含无幻觉，已验证）。vlm-http-client(PaddleOCR-VL `:18080`)暂搁置——服务端当前返空 md，仅 pipeline 解析不了时启用 |
 | LLM | DeepSeek 官方云 · `deepseek-v4-pro` | **thinking 模式 → instructor 必须用 `Mode.JSON`**（否则 400） |
 | embedding | `http://192.168.121.33:8008/v1/embeddings` | Qwen3-Embedding-4B，vLLM OpenAI 兼容，**2560 维** |
-| reranker | `http://192.168.121.33:8012/v1/rerank` | Qwen3-Reranker-4B（T07 用） |
+| reranker | `http://192.168.121.33:8012/v1/rerank` | Qwen3-Reranker-8B（T07 用） |
 | Milvus | `localhost:19530`（Docker v2.4.5） | collection `contract_chunks` 已由 T04 建好，勿重建 |
 
 **测试样本**：`data/test-example/` 有真实合同 PDF；真值台账 `demo/合同台账-V2.xlsx`（sheet「合同台账」，行3=字段名，数据从行4起）。已验第一条：`HJ-2024055` PDF ↔ 台账第7行，pipeline+v4-pro 可比字段命中 77%（2 处"错"实为 pipeline OCR 上游问题，非抽取逻辑错）。
