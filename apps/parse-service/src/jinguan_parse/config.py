@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     milvus_uri: str = "http://localhost:19530"
     pg_url: str = "postgresql://postgres:pw@localhost:5432/contracts"
 
+    # AI 业绩关键词台账（§6.2 词表来源）。sheet「AI业绩关键词」：A=大方向 B=具体技术。
+    ledger_xlsx: str = "demo/合同台账-V2.xlsx"
+    keyword_sheet: str = "AI业绩关键词"
+
 
 def load_settings(env_file: str | None = None) -> Settings:
     """加载配置。测试可传入独立 env_file 或直接构造 Settings(**overrides)。"""

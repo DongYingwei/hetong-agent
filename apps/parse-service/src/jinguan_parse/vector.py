@@ -99,6 +99,10 @@ class MilvusVectorStore:
         client.insert(collection_name=COLLECTION, data=rows)
         return len(rows)
 
+    def flush(self) -> None:
+        """强制落盘 —— insert 后 num_entities/查询可见有延迟，入库收尾显式 flush。"""
+        self._c().flush(collection_name=COLLECTION)
+
     def delete_by_contract(self, contract_id: int) -> None:
         """原文更新/重建时按合同清旧片段（§7.6.5，切片3 会用）。"""
         client = self._c()

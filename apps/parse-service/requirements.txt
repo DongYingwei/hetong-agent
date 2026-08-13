@@ -11,3 +11,4 @@ fastapi>=0.111           # HTTP 上传入口（本机已装）
 uvicorn>=0.30            # ASGI 服务器（本机已装）
 python-multipart>=0.0.9  # FastAPI multipart 上传
 pymilvus>=2.4            # Milvus 写入（官方 SDK）
+openpyxl>=3.1            # 读台账 xlsx「AI业绩关键词」词表（§6.2 taxonomy loader）

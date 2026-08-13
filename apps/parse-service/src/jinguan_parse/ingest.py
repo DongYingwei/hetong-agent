@@ -65,12 +65,21 @@ class IngestDeps:
     contract_no_of: Callable[[object, str], str] | None = None
 
 
-def ingest_one(conn: Connection, path: str, deps: IngestDeps) -> IngestResult:
-    """处理一份 PDF：指纹去重 → 抽取 → 落草稿。失败返回 status=failed，不抛。"""
+def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = False) -> IngestResult:
+    """处理一份 PDF：指纹去重 → 抽取 → 落草稿。失败返回 status=failed，不抛。
+
+    force=True：跳过指纹去重（重新解析）。若同指纹草稿已存在，先删旧草稿再重建；
+    已核对入正式库的合同不受影响（正式库去重靠 contract_no，重解析产出新草稿供再次核对）。
+    """
     try:
         sha = file_sha256(path)
-        if _already_ingested(conn, sha):
+        if not force and _already_ingested(conn, sha):
             return IngestResult(path, "skipped_duplicate")
+        if force:
+            # 清掉同指纹的旧草稿，避免重复草稿堆积（正式库记录不动）。
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM contracts_draft WHERE source_sha256 = %s", (sha,))
+            conn.commit()
         draft = extract_one_contract(path, deps.mineru, deps.extractor, deps.modules, deps.matcher)
         if deps.contract_no_of is not None:
             contract_no = deps.contract_no_of(draft, path)

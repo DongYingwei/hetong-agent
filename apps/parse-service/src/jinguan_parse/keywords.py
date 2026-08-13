@@ -33,9 +33,14 @@ class KeywordMatcher:
                     continue
                 self._word_to_cat[w] = category
                 self._automaton.add_word(w, w)
-        self._automaton.make_automaton()
+        # 空词表：automaton 无任何词，make_automaton 会抛错。此时 match 恒返回未命中。
+        self._empty = len(self._word_to_cat) == 0
+        if not self._empty:
+            self._automaton.make_automaton()
 
     def match(self, text: str) -> KeywordHit:
+        if self._empty:
+            return KeywordHit(hit=False, keywords=[], categories=[])
         found_words: list[str] = []
         found_cats: list[str] = []
         seen_w: set[str] = set()
