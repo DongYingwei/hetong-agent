@@ -8,7 +8,7 @@
           <p class="text-xs text-gray-500 mt-1">管理命中关键词类别，当合同或订单中出现该类别下的词或语义时，即认定为命中该关键词</p>
         </div>
         <div class="flex gap-2">
-        <el-button :loading="rescanning" @click="handleRescan">
+        <el-button @click="showRescanModal = true">
           重新扫描关键词
         </el-button>
         <el-button
@@ -175,6 +175,7 @@
 
     <!-- 新增/编辑主关键词 Modal -->
     <KeywordModal v-model="showKwModal" :edit-data="currentEditData" @success="loadData" />
+    <RescanKeywordsModal v-model="showRescanModal" @success="loadData" />
 
     <!-- 新增/编辑子词 Modal -->
     <KwSubModal
@@ -194,6 +195,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { keywordApi, type KeywordItem } from '../api';
 import KeywordModal from '../components/modals/KeywordModal.vue';
 import KwSubModal from '../components/modals/KwSubModal.vue';
+import RescanKeywordsModal from '../components/modals/RescanKeywordsModal.vue';
 
 const loading = ref(false);
 const searchKeyword = ref('');
@@ -210,7 +212,7 @@ const currentEditData = ref<KeywordItem | null>(null);
 const currentMasterId = ref<number | null>(null);
 const currentMasterName = ref('');
 const currentExistingSubWords = ref<string[]>([]);
-const rescanning = ref(false);
+const showRescanModal = ref(false);
 
 onMounted(() => {
   loadData();
@@ -244,21 +246,6 @@ function handleReset() {
 function handleCreate() {
   currentEditData.value = null;
   showKwModal.value = true;
-}
-
-async function handleRescan() {
-  try {
-    await ElMessageBox.confirm('将按当前模块和关键词配置重新扫描已上传合同；不会重切片或重建向量，且默认保留人工核对调整。是否继续？', '重新扫描关键词', {
-      confirmButtonText: '开始扫描', cancelButtonText: '取消', type: 'warning',
-    });
-    rescanning.value = true;
-    const res = await keywordApi.rescan();
-    if (res.code === 200) ElMessage.success(`已扫描 ${res.data.contracts} 份合同`);
-  } catch (e: any) {
-    if (e !== 'cancel' && e !== 'close') ElMessage.error(e?.message || '重新扫描失败');
-  } finally {
-    rescanning.value = false;
-  }
 }
 
 function handleEdit(row: KeywordItem) {

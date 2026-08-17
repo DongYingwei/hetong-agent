@@ -206,11 +206,14 @@ def create_app(conn_factory, deps: IngestDeps,
 
     @app.put("/keyword-config/{keyword_id}")
     def update_keyword(keyword_id: int, body: dict = Body(...)):
+        # 前端状态使用 0/1，数据库 enabled 是 boolean；在传给 COALESCE 前统一类型，
+        # 否则 PostgreSQL 会报 smallint 与 boolean 无法合并。
+        enabled = _as_bool(body["status"]) if "status" in body else None
         conn = conn_factory()
         try:
             with conn.cursor() as cur:
                 cur.execute("UPDATE ai_keywords SET name=COALESCE(%s,name), match_rules=COALESCE(%s,match_rules), enabled=COALESCE(%s,enabled), updated_at=now() WHERE id=%s",
-                            (body.get("keyword_name"), body.get("match_rules"), body.get("status"), keyword_id))
+                            (body.get("keyword_name"), body.get("match_rules"), enabled, keyword_id))
                 if cur.rowcount == 0:
                     raise HTTPException(status_code=404, detail="关键词不存在")
             conn.commit()
