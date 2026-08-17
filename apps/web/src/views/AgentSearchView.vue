@@ -46,7 +46,7 @@
         </div>
         <div class="flex items-center gap-3">
           <div class="text-right font-mono text-xs text-gray-400">
-            已索引 <span class="font-bold text-[#303133]">1,247</span> 份合同及 <span class="font-bold text-[#303133]">3,568</span> 条订单
+            已索引 <span class="font-bold text-[#303133]">{{ indexedContractCount ?? '—' }}</span> 份合同及 <span class="font-bold text-[#303133]">{{ indexedOrderCount ?? '—' }}</span> 条订单
           </div>
           <el-button type="info" plain size="small" @click="handleClearChat">清空记录</el-button>
         </div>
@@ -232,6 +232,7 @@ import { ref, nextTick, onMounted } from 'vue';
 import { Plus, ChatDotSquare, Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { agentApi, type Citation, type TableRowItem } from '../api/agentApi';
+import { contractApi, orderApi } from '../api';
 import { exportFullContractLedgerExcel } from '../utils/excelExporter';
 import { renderAssistantContent } from '../utils/markdown';
 
@@ -331,6 +332,8 @@ const WELCOME = `您好，我是**综合检索智能体**。您可以问我关�
 
 const historyList = ref<any[]>([]);
 const sessionId = ref<string | undefined>();
+const indexedContractCount = ref<number | null>(null);
+const indexedOrderCount = ref<number | null>(null);
 
 const activeHistoryIndex = ref(0);
 const inputQuery = ref('');
@@ -344,9 +347,24 @@ const messages = ref<MessageItem[]>([
 onMounted(() => {
   scrollToBottom();
   loadSessions();
+  loadIndexStats();
 });
 
 async function loadSessions() { const res = await agentApi.getSessions(); if (res.code === 200) historyList.value = res.data.list || []; }
+
+/** 头部索引数量必须来自真实台账，不能使用原型演示值。 */
+async function loadIndexStats() {
+  const [contracts, orders] = await Promise.allSettled([
+    contractApi.getList({ page: 1, pageSize: 1 }),
+    orderApi.getList({ page: 1, pageSize: 1 }),
+  ]);
+  if (contracts.status === 'fulfilled' && contracts.value.code === 200) {
+    indexedContractCount.value = Number(contracts.value.data.total);
+  }
+  if (orders.status === 'fulfilled' && orders.value.code === 200) {
+    indexedOrderCount.value = Number(orders.value.data.total);
+  }
+}
 
 function scrollToBottom() {
   nextTick(() => {
