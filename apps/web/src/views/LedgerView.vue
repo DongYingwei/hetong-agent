@@ -184,10 +184,9 @@
                     <el-dropdown-item style="color: #F56C6C;" @click="handleDelete(row.id)">删除</el-dropdown-item>
                   </template>
 
-                  <!-- 已核对：更多包含【原文件】、【编辑】、【删除】 -->
+                  <!-- 已核对：原文件与删除。合同内容以 PDF 解析→人工核对→正式库入库为唯一流程，不提供旧演示库编辑。 -->
                   <template v-else>
                     <el-dropdown-item @click="goToCompare(row.id)">原文件</el-dropdown-item>
-                    <el-dropdown-item @click="handleOpenEditModal(row)">编辑</el-dropdown-item>
                     <el-dropdown-item divided style="color: #F56C6C;" @click="handleDelete(row.id)">删除</el-dropdown-item>
                   </template>
                 </el-dropdown-menu>
@@ -215,15 +214,6 @@
     <!-- 导入合同弹框组件 -->
     <ImportContractModal v-model="showImportModal" @success="loadData" />
 
-    <!-- 编辑合同弹框组件 (demo.html 1:1 还原) -->
-    <EditContractModal v-model="showEditModal" :edit-data="currentEditRow" @success="loadData" />
-
-    <!-- 查看合同核对信息弹框 (1:1 还原 demo2.html viewModal) -->
-    <ContractViewModal
-      v-model="showViewModal"
-      :contract-data="currentViewRow"
-      @edit="handleOpenEditModal"
-    />
   </div>
 </template>
 
@@ -238,18 +228,12 @@ import { formatCurrency, formatDate } from '../utils/formatters';
 import { exportFullContractLedgerExcel } from '../utils/excelExporter';
 import type { ContractLedger } from '../types';
 import ImportContractModal from '../components/modals/ImportContractModal.vue';
-import EditContractModal from '../components/modals/EditContractModal.vue';
-import ContractViewModal from '../components/modals/ContractViewModal.vue';
 
 const router = useRouter();
 const dictStore = useDictStore();
 
 const loading = ref(false);
 const showImportModal = ref(false);
-const showEditModal = ref(false);
-const currentEditRow = ref<ContractLedger | null>(null);
-const showViewModal = ref(false);
-const currentViewRow = ref<ContractLedger | null>(null);
 
 const tableData = ref<ContractLedger[]>([]);
 const total = ref(0);
@@ -319,11 +303,6 @@ function goToDetail(id: number) {
 
 function goToCompare(id: number) {
   router.push(`/compare?id=${id}`);
-}
-
-function handleOpenEditModal(row: ContractLedger) {
-  currentEditRow.value = row;
-  showEditModal.value = true;
 }
 
 function handleVerifyClick(row: ContractLedger) {

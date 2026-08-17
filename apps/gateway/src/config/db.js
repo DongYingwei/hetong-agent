@@ -4,7 +4,7 @@ import { config } from './index.js';
 /**
  * PostgreSQL 连接池（T10：MySQL→PG 迁移，坑1/坑6 全系统统一 PG）。
  *
- * 兼容层：保留原 mysql2 的 query(sql, params)/withTransaction 接口签名，
+ * 兼容层：保留原 mysql2 的 query(sql, params) 接口签名，
  * 让绝大多数路由零改动即可迁移——差异在 SQL 方言层由本文件吸收：
  *   · 占位符 `?` → `$1,$2,...`（PG 用带序号占位符）
  *   · 反引号 `col` → 去除（PG 用双引号或裸标识符）
@@ -51,37 +51,4 @@ export const queryPool = new pg.Pool({
 export async function queryRead(sql, params = []) {
   const res = await queryPool.query(sql, params);
   return res.rows;
-}
-
-/**
- * 事务封装：回调收到一个 mysql2 兼容的连接对象，暴露 execute(sql, params)
- * 返回 [rowsOrMeta]，其中写入语句可通过 rows[0]/meta.insertId 取新 id。
- * @param {Function} callback async (conn) => result
- */
-export async function withTransaction(callback) {
-  const client = await pool.connect();
-  await client.query('BEGIN');
-  try {
-    // mysql2 兼容 shim：execute 返回 [result]，result 带 insertId/rows/rowCount。
-    const conn = {
-      async execute(sql, params = []) {
-        const res = await client.query(toPg(sql), params);
-        const insertId = res.rows && res.rows[0] ? res.rows[0].id : undefined;
-        const result = { insertId, affectedRows: res.rowCount, rows: res.rows };
-        return [result];
-      },
-      async query(sql, params = []) {
-        const res = await client.query(toPg(sql), params);
-        return [res.rows];
-      },
-    };
-    const result = await callback(conn);
-    await client.query('COMMIT');
-    return result;
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
 }

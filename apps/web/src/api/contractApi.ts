@@ -32,13 +32,6 @@ export const contractApi = {
   },
 
   /**
-   * 新增/导入合同
-   */
-  create(data: Partial<ContractLedger>): Promise<ApiResponse<null>> {
-    return request.post('/contract/create', data);
-  },
-
-  /**
    * 执行 AI 智能核对
    */
   verify(id: number): Promise<ApiResponse<null>> {

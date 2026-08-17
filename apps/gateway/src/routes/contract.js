@@ -1,6 +1,6 @@
 import Router from '@koa/router';
 import { Readable } from 'node:stream';
-import { query, queryRead } from '../config/db.js';
+import { queryRead } from '../config/db.js';
 import { config } from '../config/index.js';
 
 const router = new Router({ prefix: '/api/contract' });
@@ -170,44 +170,6 @@ router.put('/:id/keyword-overrides', async (ctx) => {
   const data = await resp.json().catch(() => ({}));
   if (!resp.ok) return ctx.fail(data.detail || '保存关键词核对失败', 502);
   ctx.success(data, '关键词核对已保存');
-});
-
-/**
- * 新增/导入合同
- */
-router.post('/create', async (ctx) => {
-  const {
-    contractNo,
-    customerName,
-    contractName,
-    contractType = 2,
-    signDate,
-    amount = 0.00,
-    assessmentLine = '通用',
-    hasAiKeyword = 1,
-    contractStatus = 2,
-  } = ctx.request.body;
-
-  if (!contractNo || !customerName || !contractName || !signDate) {
-    return ctx.fail('合同编号、客户名称、合同名称与签约时间不能为空');
-  }
-
-  await withTransaction(async (conn) => {
-    const [res] = await conn.execute(
-      `INSERT INTO contract_ledger
-       (contract_no, customer_name, contract_name, contract_type, sign_date, amount, assessment_line, has_ai_keyword, contract_status, verify_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0) RETURNING id`,
-      [contractNo, customerName, contractName, contractType, signDate, amount, assessmentLine, hasAiKeyword, contractStatus]
-    );
-
-    // 记录履约历史
-    await conn.execute(
-      `INSERT INTO contract_history (contract_id, action_type, operator_name, remark) VALUES (?, ?, ?, ?)`,
-      [res.insertId, '合同导入', ctx.state.user?.realName || '系统管理员', '导入新建合同台账记录']
-    );
-  });
-
-  ctx.success(null, '合同导入保存成功');
 });
 
 /**
