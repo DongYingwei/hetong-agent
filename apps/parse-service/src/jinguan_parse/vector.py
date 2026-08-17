@@ -161,7 +161,11 @@ def markdown_to_segments(markdown: str, contract_id: int, contract_no: str,
             if any(v in cur_title for v in variants):
                 mod_key = mk
                 break
-        segments.append({"field": cur_title, "module_key": mod_key,
+        # Milvus field 元数据最大 128 字符；标题可能是 OCR 误合并的长句。
+        # 仅截断检索标签，正文 text 保持完整，不丢失可检索内容。
+        # Milvus VARCHAR 限制按 UTF-8 字节计，不是 Python 字符数。
+        field_label = cur_title.encode("utf-8")[:120].decode("utf-8", errors="ignore")
+        segments.append({"field": field_label, "module_key": mod_key,
                          "module_category": None, "text": text})
 
     for ln in lines:

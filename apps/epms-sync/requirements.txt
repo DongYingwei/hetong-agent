@@ -1,0 +1,7 @@
+requests
+pandas
+openpyxl
+pymupdf
+xlrd
+psycopg[binary]
+python-dotenv

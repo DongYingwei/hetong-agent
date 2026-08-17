@@ -40,6 +40,14 @@
           placeholder="描述AI如何识别该模块，如按标题章节自动归类"
         />
       </el-form-item>
+
+      <el-form-item label="适配范围" required>
+        <el-radio-group v-model="form.scope">
+          <el-radio value="contract">仅合同</el-radio>
+          <el-radio value="order">仅订单</el-radio>
+          <el-radio value="all">合同+订单</el-radio>
+        </el-radio-group>
+      </el-form-item>
     </el-form>
 
     <template #footer>
@@ -80,10 +88,11 @@ const formRef = ref<FormInstance>();
 const inputTagText = ref('');
 
 const form = reactive({
-  id: undefined as number | undefined,
+  id: undefined as number | string | undefined,
   sectionTitle: '',
   subNamesList: ['服务内容'] as string[],
   rulesDesc: '',
+  scope: 'all' as 'contract' | 'order' | 'all',
 });
 
 const rules: FormRules = {
@@ -106,12 +115,14 @@ watch(() => props.editData, (val) => {
     form.sectionTitle = val.section_title;
     form.subNamesList = val.sub_names ? val.sub_names.split(',').filter(Boolean) : [val.section_title];
     form.rulesDesc = val.rules_desc || '';
+    form.scope = val.scope || 'all';
   } else {
     isEdit.value = false;
     form.id = undefined;
     form.sectionTitle = '';
     form.subNamesList = [];
     form.rulesDesc = '';
+    form.scope = 'all';
   }
 });
 
@@ -141,6 +152,7 @@ async function handleSubmit() {
           subNames: subNamesStr,
           rulesDesc: form.rulesDesc,
           status: 1,
+          scope: form.scope,
         });
         ElMessage.success('编辑成功');
       } else {
@@ -149,6 +161,7 @@ async function handleSubmit() {
           subNames: subNamesStr,
           rulesDesc: form.rulesDesc,
           status: 1,
+          scope: form.scope,
         });
         ElMessage.success('新增成功');
       }

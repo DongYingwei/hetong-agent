@@ -7,8 +7,11 @@
 from __future__ import annotations
 
 import tempfile
+import uuid
+from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
+from fastapi.responses import FileResponse
 
 from .config import load_settings
 from .clients import HttpMineruClient, DeepSeekExtractClient
@@ -18,6 +21,7 @@ from .keywords import KeywordMatcher
 from .sync import sync_source_update, sync_label_update, ContractNotFound
 from .vector import EmbeddingClient, VectorStore, vectorize_confirmed_contract
 from .confirm import confirm_draft, DraftNotFound
+from .keyword_scan import ScanKeyword, ScanModule, scan_markdown, scan_fulltext_markdown, split_module_paragraphs
 
 # 核对页要展示/编辑的草稿字段（17 标量 AI 主列 + 手工列 + tag_ai）。
 _DRAFT_FORM_COLS = [
@@ -86,6 +90,67 @@ def create_app(conn_factory, deps: IngestDeps,
             raise HTTPException(status_code=404, detail=f"草稿 id={draft_id} 不存在")
         return draft
 
+    @app.get("/contract/{contract_id}/source-files")
+    def get_source_files(contract_id: int):
+        """列出合同包中可预览的 PDF；详情页可切换附件但不会暴露磁盘路径。"""
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT cs.id, cs.source_relative_path, cs.role
+                                 FROM contract_packages cp
+                                 JOIN contract_sources cs ON cs.package_id=cp.id
+                                WHERE cp.contract_id=%s AND cs.source_type='pdf'
+                                ORDER BY CASE WHEN cs.role='primary' THEN 0 ELSE 1 END, cs.id""", (contract_id,))
+                rows = cur.fetchall()
+        finally:
+            conn.close()
+        return {"list": [{"id": r[0], "name": Path(r[1]).name, "role": r[2]} for r in rows]}
+
+    @app.get("/contract/{contract_id}/original-pdf")
+    def get_original_pdf(contract_id: int, source_id: int | None = None):
+        """按已确认合同关联的 source 路径返回原始 PDF，供人工核对直接预览。"""
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                if source_id is None:
+                    cur.execute("""SELECT cs.source_relative_path FROM contract_packages cp
+                                     JOIN contract_sources cs ON cs.package_id=cp.id
+                                    WHERE cp.contract_id=%s AND cs.source_type='pdf'
+                                    ORDER BY CASE WHEN cs.role='primary' THEN 0 ELSE 1 END, cs.id LIMIT 1""", (contract_id,))
+                else:
+                    cur.execute("""SELECT cs.source_relative_path FROM contract_packages cp
+                                     JOIN contract_sources cs ON cs.package_id=cp.id
+                                    WHERE cp.contract_id=%s AND cs.source_type='pdf' AND cs.id=%s LIMIT 1""", (contract_id, source_id))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="该合同未关联原始 PDF")
+        source_root = (Path(__file__).resolve().parents[4] / "data" / "pdf").resolve()
+        pdf = (source_root / row[0]).resolve()
+        if source_root not in pdf.parents or not pdf.is_file():
+            raise HTTPException(status_code=404, detail="已关联的原始 PDF 文件不存在")
+        return FileResponse(pdf, media_type="application/pdf", filename=pdf.name, content_disposition_type="inline")
+
+    @app.post("/contract/{contract_id}/review")
+    def mark_contract_reviewed(contract_id: int, body: dict = Body(default={})):
+        """人工保存核对后才变为“已核对”；不改变正式入库和向量状态。"""
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM contracts WHERE id=%s", (contract_id,))
+                if cur.fetchone() is None:
+                    raise HTTPException(status_code=404, detail="合同不存在")
+                cur.execute("""INSERT INTO contract_manual_reviews(contract_id,status,reviewed_by,reviewed_at,updated_at)
+                               VALUES (%s,1,%s,now(),now())
+                               ON CONFLICT(contract_id) DO UPDATE SET status=1, reviewed_by=EXCLUDED.reviewed_by,
+                                 reviewed_at=EXCLUDED.reviewed_at, updated_at=now()""",
+                            (contract_id, body.get("reviewed_by") or "web-verify"))
+            conn.commit()
+            return {"contract_id": contract_id, "status": 1}
+        finally:
+            conn.close()
+
     @app.post("/confirm/{draft_id}")
     def confirm(draft_id: int, body: dict = Body(default={})):
         """B4：人工核对入正式库 + 建向量。body.overrides = 人工修正的字段（列名→值）。"""
@@ -97,6 +162,8 @@ def create_app(conn_factory, deps: IngestDeps,
         except DraftNotFound as e:
             conn.close()
             raise HTTPException(status_code=404, detail=str(e))
+        # 关键词扫描属于台账确定性规则，不依赖向量；正式入库后立即写命中明细。
+        _rescan_contract(conn, contract_id)
         # 建向量（坑9：仅正式库）。读回正式库的 mineru_md 切片建向量。
         chunks = 0
         try:
@@ -111,6 +178,179 @@ def create_app(conn_factory, deps: IngestDeps,
         finally:
             conn.close()
         return {"contract_id": contract_id, "chunks": chunks, "vectorized": chunks > 0}
+
+    # ── 关键词管理（唯一事实来源：contracts 库） ──────────────────────
+    @app.get("/keyword-config")
+    def list_keywords():
+        conn = conn_factory()
+        try:
+            return {"list": _list_keywords(conn)}
+        finally:
+            conn.close()
+
+    @app.post("/keyword-config")
+    def create_keyword(body: dict = Body(...)):
+        name = str(body.get("keyword_name") or "").strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="关键词名称不能为空")
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("INSERT INTO ai_keywords(name, match_rules, enabled) VALUES (%s,%s,%s) RETURNING id",
+                            (name, body.get("match_rules") or "", _as_bool(body.get("status", 1))))
+                kid = cur.fetchone()[0]
+            conn.commit()
+            return {"id": kid}
+        finally:
+            conn.close()
+
+    @app.put("/keyword-config/{keyword_id}")
+    def update_keyword(keyword_id: int, body: dict = Body(...)):
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("UPDATE ai_keywords SET name=COALESCE(%s,name), match_rules=COALESCE(%s,match_rules), enabled=COALESCE(%s,enabled), updated_at=now() WHERE id=%s",
+                            (body.get("keyword_name"), body.get("match_rules"), body.get("status"), keyword_id))
+                if cur.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="关键词不存在")
+            conn.commit()
+            return {"id": keyword_id}
+        finally:
+            conn.close()
+
+    @app.delete("/keyword-config/{keyword_id}")
+    def delete_keyword(keyword_id: int):
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM ai_keywords WHERE id=%s", (keyword_id,))
+            conn.commit()
+            return {"id": keyword_id}
+        finally:
+            conn.close()
+
+    @app.post("/keyword-config/{keyword_id}/terms")
+    def add_terms(keyword_id: int, body: dict = Body(...)):
+        terms = body.get("sub_words") or body.get("sub_word") or []
+        if isinstance(terms, str):
+            terms = [terms]
+        terms = [str(t).strip() for t in terms if str(t).strip()]
+        if not terms:
+            raise HTTPException(status_code=400, detail="子词不能为空")
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                for term in terms:
+                    cur.execute("INSERT INTO ai_keyword_terms(keyword_id,term) VALUES (%s,%s) ON CONFLICT DO NOTHING", (keyword_id, term))
+            conn.commit()
+            return {"added": len(terms)}
+        finally:
+            conn.close()
+
+    @app.delete("/keyword-config/{keyword_id}/terms/{term}")
+    def remove_term(keyword_id: int, term: str):
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("DELETE FROM ai_keyword_terms WHERE keyword_id=%s AND term=%s", (keyword_id, term))
+            conn.commit()
+            return {"removed": term}
+        finally:
+            conn.close()
+
+    @app.get("/modules")
+    def list_modules():
+        conn = conn_factory()
+        try:
+            return {"list": _list_modules(conn)}
+        finally:
+            conn.close()
+
+    @app.post("/modules")
+    def create_module(body: dict = Body(...)):
+        name = str(body.get("name") or body.get("sectionTitle") or "").strip()
+        anchors = body.get("anchor_names") or body.get("subNames") or []
+        if isinstance(anchors, str):
+            anchors = [x.strip() for x in anchors.replace("，", ",").split(",") if x.strip()]
+        if not name or not anchors:
+            raise HTTPException(status_code=400, detail="模块名称和对应合同内模块名称不能为空")
+        key = str(body.get("module_key") or f"custom_{uuid.uuid4().hex[:12]}")
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                scope = body.get("scope") if body.get("scope") in {"contract", "order", "all"} else "all"
+                cur.execute("INSERT INTO contract_modules(module_key,name,anchor_names,recognition_rule,enabled,sort_order,scope) VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                            (key, name, anchors, body.get("recognition_rule") or body.get("rulesDesc"), _as_bool(body.get("enabled", True)), int(body.get("sort_order", 99)), scope))
+            conn.commit()
+            return {"module_key": key}
+        finally:
+            conn.close()
+
+    @app.put("/modules/{module_key}")
+    def update_module(module_key: str, body: dict = Body(...)):
+        anchors = body.get("anchor_names") or body.get("subNames")
+        if isinstance(anchors, str):
+            anchors = [x.strip() for x in anchors.replace("，", ",").split(",") if x.strip()]
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""UPDATE contract_modules SET name=COALESCE(%s,name), anchor_names=COALESCE(%s,anchor_names),
+                               recognition_rule=COALESCE(%s,recognition_rule), enabled=COALESCE(%s,enabled),
+                               scope=COALESCE(%s,scope)
+                               WHERE module_key=%s""",
+                            (body.get("name") or body.get("sectionTitle"), anchors,
+                             body.get("recognition_rule") or body.get("rulesDesc"),
+                             _as_bool(body["enabled"] if "enabled" in body else body["status"]) if ("enabled" in body or "status" in body) else None,
+                             body.get("scope") if body.get("scope") in {"contract", "order", "all"} else None,
+                             module_key))
+                if cur.rowcount == 0:
+                    raise HTTPException(status_code=404, detail="模块不存在")
+            conn.commit()
+            return {"module_key": module_key}
+        finally:
+            conn.close()
+
+    @app.post("/contracts/rescan-keywords")
+    def rescan_keywords(body: dict = Body(default={})):
+        conn = conn_factory()
+        try:
+            ids = body.get("contract_ids")
+            with conn.cursor() as cur:
+                cur.execute("SELECT id FROM contracts" + (" WHERE id = ANY(%s)" if ids else ""), (ids,) if ids else ())
+                contract_ids = [row[0] for row in cur.fetchall()]
+            for contract_id in contract_ids:
+                _rescan_contract(conn, contract_id, bool(body.get("overwrite_manual", False)))
+            conn.commit()
+            return {"contracts": len(contract_ids)}
+        finally:
+            conn.close()
+
+    @app.get("/contract/{contract_id}/keyword-hits")
+    def get_keyword_hits(contract_id: int):
+        conn = conn_factory()
+        try:
+            return {"list": _effective_keyword_hits(conn, contract_id)}
+        finally:
+            conn.close()
+
+    @app.put("/contract/{contract_id}/keyword-overrides")
+    def save_keyword_override(contract_id: int, body: dict = Body(...)):
+        module_key, keyword_id, action = body.get("module_key"), body.get("keyword_id"), body.get("action")
+        if not module_key or not keyword_id or action not in {"include", "exclude"}:
+            raise HTTPException(status_code=400, detail="module_key、keyword_id、action(include/exclude) 必填")
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""INSERT INTO contract_keyword_overrides(contract_id,module_key,keyword_id,action,updated_by)
+                               VALUES (%s,%s,%s,%s,%s)
+                               ON CONFLICT(contract_id,module_key,keyword_id) DO UPDATE
+                               SET action=EXCLUDED.action, updated_by=EXCLUDED.updated_by, updated_at=now()""",
+                            (contract_id, module_key, keyword_id, action, body.get("updated_by")))
+            _refresh_contract_summary(conn, contract_id)
+            conn.commit()
+            return {"contract_id": contract_id, "module_key": module_key, "keyword_id": keyword_id, "action": action}
+        finally:
+            conn.close()
 
     @app.delete("/contract/{contract_id}")
     def delete_contract(contract_id: int):
@@ -214,6 +454,21 @@ def _read_draft(conn, draft_id: int) -> dict | None:
         if data.get(k) is not None:
             data[k] = float(data[k])
     md = data.pop("mineru_md", None) or ""
+    # 草稿核对页也使用当前数据库配置预览，避免仍展示旧 Excel 词表的结果。
+    modules, keywords = _scan_config(conn)
+    grouped: dict[str, set[str]] = {m.key: set() for m in modules}
+    for hit in scan_markdown(md, modules, keywords):
+        if hit.module_key in grouped:
+            parent = next((k.name for k in keywords if k.id == hit.keyword_id), None)
+            if parent:
+                grouped[hit.module_key].add(parent)
+    data["module_hits"] = [
+        {"module_key": m.key, "hit": 1 if grouped[m.key] else 0,
+         "keywords": ",".join(sorted(grouped[m.key])) or None, "category": None,
+         "raw_text": None}
+        for m in modules
+    ]
+    data["tag_ai"] = 1 if any(grouped.values()) else 0
     return {
         "draft_id": draft_id,
         "form": {c: data.get(c) for c in _DRAFT_FORM_COLS},
@@ -222,6 +477,135 @@ def _read_draft(conn, draft_id: int) -> dict | None:
         "mineru_md_preview": md,
         "mineru_md_len": len(md),
     }
+
+
+def _list_modules(conn) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute("SELECT module_key,name,anchor_names,recognition_rule,enabled,sort_order,scope FROM contract_modules ORDER BY sort_order,module_key")
+        return [
+            {"module_key": r[0], "name": r[1], "anchor_names": list(r[2] or []),
+             "recognition_rule": r[3], "enabled": r[4], "sort_order": r[5], "scope": r[6]}
+            for r in cur.fetchall()
+        ]
+
+
+def _as_bool(value) -> bool:
+    return str(value).strip().lower() not in {"0", "false", "off", "no", ""}
+
+
+def _list_keywords(conn) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute("""SELECT k.id,k.name,k.match_rules,k.enabled,COALESCE(array_agg(t.term ORDER BY t.term)
+                        FILTER (WHERE t.term IS NOT NULL), '{}')
+                        FROM ai_keywords k LEFT JOIN ai_keyword_terms t ON t.keyword_id=k.id
+                        GROUP BY k.id,k.name,k.match_rules,k.enabled ORDER BY k.id DESC""")
+        return [{"id": r[0], "keyword_name": r[1], "match_rules": r[2] or "—",
+                 "status": 1 if r[3] else 0, "sub_words": list(r[4] or []), "sub_count": len(r[4] or [])}
+                for r in cur.fetchall()]
+
+
+def _scan_config(conn) -> tuple[list[ScanModule], list[ScanKeyword]]:
+    modules = [ScanModule(x["module_key"], x["name"], tuple(x["anchor_names"]))
+               for x in _list_modules(conn) if x["enabled"]]
+    keywords = [ScanKeyword(x["id"], x["keyword_name"], tuple(x["sub_words"]))
+                for x in _list_keywords(conn) if x["status"] == 1]
+    return modules, keywords
+
+
+def _rescan_contract(conn, contract_id: int, overwrite_manual: bool = False) -> None:
+    """重扫仅重建确定性命中，不触及 Markdown、chunk 或 Milvus。"""
+    with conn.cursor() as cur:
+        cur.execute("SELECT mineru_md FROM contracts WHERE id=%s", (contract_id,))
+        row = cur.fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="合同不存在")
+        markdown = row[0] or ""
+        if overwrite_manual:
+            cur.execute("DELETE FROM contract_keyword_overrides WHERE contract_id=%s", (contract_id,))
+        cur.execute("DELETE FROM contract_keyword_hits WHERE contract_id=%s AND source IN ('automatic','fulltext')", (contract_id,))
+    modules, keywords = _scan_config(conn)
+    # 全文索引用于完整性审计，默认不向页面返回；分段命中才进入台账 AI 列。
+    fulltext_hits = scan_fulltext_markdown(markdown, keywords)
+    # 仅已归属四类配置模块的命中才是可见的台账命中。未归属段落已由
+    # fulltext_hits 留作隐藏全文索引，不能以 automatic 形式泄露或影响统计。
+    hits = [hit for hit in scan_markdown(markdown, modules, keywords) if hit.module_key is not None]
+    with conn.cursor() as cur:
+        for hit in fulltext_hits:
+            cur.execute("""INSERT INTO contract_keyword_hits
+                           (contract_id,module_key,keyword_id,matched_term,paragraph_no,paragraph_text,source)
+                           VALUES (%s,%s,%s,%s,%s,%s,'fulltext') ON CONFLICT DO NOTHING""",
+                        (contract_id, hit.module_key, hit.keyword_id, hit.matched_term, hit.paragraph_no, hit.paragraph_text))
+        for hit in hits:
+            cur.execute("""INSERT INTO contract_keyword_hits
+                           (contract_id,module_key,keyword_id,matched_term,paragraph_no,paragraph_text,source)
+                           VALUES (%s,%s,%s,%s,%s,%s,'automatic') ON CONFLICT DO NOTHING""",
+                        (contract_id, hit.module_key, hit.keyword_id, hit.matched_term, hit.paragraph_no, hit.paragraph_text))
+    _refresh_contract_summary(conn, contract_id, markdown, modules)
+
+
+def _effective_keyword_hits(conn, contract_id: int) -> list[dict]:
+    with conn.cursor() as cur:
+        cur.execute("""SELECT h.module_key,k.id,k.name,h.matched_term,h.paragraph_no,h.paragraph_text,h.source,
+                              o.action
+                       FROM contract_keyword_hits h JOIN ai_keywords k ON k.id=h.keyword_id
+                       LEFT JOIN contract_keyword_overrides o
+                         ON o.contract_id=h.contract_id AND o.module_key IS NOT DISTINCT FROM h.module_key AND o.keyword_id=h.keyword_id
+                       WHERE h.contract_id=%s AND h.source <> 'fulltext'
+                       ORDER BY h.module_key NULLS LAST,k.name,h.paragraph_no""", (contract_id,))
+        rows = [dict(zip(("module_key", "keyword_id", "keyword_name", "matched_term", "paragraph_no", "paragraph_text", "source", "override"), r)) for r in cur.fetchall()]
+        # 被人工排除的不作为有效命中；人工 include 即使原无自动命中也要回传核对页。
+        effective = [r for r in rows if r["override"] != "exclude"]
+        existing = {(r["module_key"], r["keyword_id"]) for r in effective}
+        cur.execute("""SELECT o.module_key,k.id,k.name FROM contract_keyword_overrides o
+                       JOIN ai_keywords k ON k.id=o.keyword_id
+                       WHERE o.contract_id=%s AND o.action='include'""", (contract_id,))
+        for module_key, keyword_id, keyword_name in cur.fetchall():
+            if (module_key, keyword_id) not in existing:
+                effective.append({"module_key": module_key, "keyword_id": keyword_id,
+                                  "keyword_name": keyword_name, "matched_term": None,
+                                  "paragraph_no": None, "paragraph_text": None,
+                                  "source": "manual", "override": "include"})
+        return effective
+
+
+def _refresh_contract_summary(conn, contract_id: int, markdown: str | None = None,
+                              modules: list[ScanModule] | None = None) -> None:
+    """把精确命中折叠为台账列所需的父词集合，并重新计算 contracts.tag_ai。"""
+    if modules is None:
+        modules, _ = _scan_config(conn)
+    if markdown is None:
+        with conn.cursor() as cur:
+            cur.execute("SELECT mineru_md FROM contracts WHERE id=%s", (contract_id,))
+            markdown = (cur.fetchone() or [""])[0] or ""
+    module_text: dict[str, list[str]] = {m.key: [] for m in modules}
+    for module_key, _, text in split_module_paragraphs(markdown, modules):
+        if module_key in module_text:
+            module_text[module_key].append(text)
+    effective = _effective_keyword_hits(conn, contract_id)
+    grouped: dict[str, set[str]] = {m.key: set() for m in modules}
+    for row in effective:
+        if row["module_key"] in grouped:
+            grouped[row["module_key"]].add(row["keyword_name"])
+    # 人工 include 没有自动原文命中时同样进入台账汇总。
+    with conn.cursor() as cur:
+        cur.execute("""SELECT o.module_key,k.name FROM contract_keyword_overrides o
+                       JOIN ai_keywords k ON k.id=o.keyword_id
+                       WHERE o.contract_id=%s AND o.action='include'""", (contract_id,))
+        for key, name in cur.fetchall():
+            if key in grouped:
+                grouped[key].add(name)
+        for module in modules:
+            names = sorted(grouped[module.key])
+            cur.execute("""INSERT INTO contract_module_hits(contract_id,module_key,hit,keywords,category,raw_text,raw_text_ai_raw)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT(contract_id,module_key) DO UPDATE SET
+                             hit=EXCLUDED.hit, keywords=EXCLUDED.keywords, category=EXCLUDED.category,
+                             raw_text=EXCLUDED.raw_text, raw_text_ai_raw=EXCLUDED.raw_text_ai_raw""",
+                        (contract_id, module.key, 1 if names else 0,
+                         ",".join(names) or None, ",".join(names) or None,
+                         "\n".join(module_text[module.key]) or None,
+                         "\n".join(module_text[module.key]) or None))
+        cur.execute("UPDATE contracts SET tag_ai=%s WHERE id=%s", (1 if any(grouped.values()) else 0, contract_id))
 
 
 def _load_modules_from_db(pg_url: str) -> list[ModuleConfig]:

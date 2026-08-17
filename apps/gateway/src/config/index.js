@@ -39,7 +39,8 @@ export const config = {
   // COREMIND_URL 指向 CoreMind HTTP 服务的对话端点；缺省时 /agent/chat 返回 503。
   coremind: {
     url: process.env.COREMIND_URL || '',
-    timeoutMs: parseInt(process.env.COREMIND_TIMEOUT_MS || '60000', 10),
+    // 比 CoreMind 自身 110s 的运行预算多留 10s，使其能返回可读的执行失败信息。
+    timeoutMs: parseInt(process.env.COREMIND_TIMEOUT_MS || '120000', 10),
   },
   // 解析侧 FastAPI（PDF→抽取→草稿→核对→入库+建向量）。前端上传/核对经网关代理到它。
   // 解析同步等待，超时给足（大 PDF 的 MinerU 解析可能数分钟）。

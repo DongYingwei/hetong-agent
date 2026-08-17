@@ -88,6 +88,16 @@ def extract_one_contract(
     """T03 接缝：一份合同 PDF → DraftContract（不写库）。"""
     # 1. MinerU → markdown
     markdown = mineru.parse_pdf(pdf_path)
+    return extract_markdown(markdown, extractor, modules, matcher)
+
+
+def extract_markdown(
+    markdown: str,
+    extractor: ExtractClient,
+    modules: list[ModuleConfig],
+    matcher: KeywordMatcher,
+) -> DraftContract:
+    """已有 Markdown → 草稿结构；供缓存 Markdown/多文件合同包复用。"""
 
     # 2. DeepSeek 抽 17 标量 AI 字段
     extraction: ContractExtraction = extractor.extract(markdown)

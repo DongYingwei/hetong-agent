@@ -63,7 +63,7 @@ ON CONFLICT DO NOTHING;
 INSERT INTO contract_modules (module_key, name, anchor_names, recognition_rule, enabled, sort_order) VALUES
   ('service', '服务内容', ARRAY['服务内容','项目内容','服务标的','项目交付物'], '按标题章节自动归类：服务/项目内容、交付物相关章节', TRUE, 1),
   ('tech',    '技术要求', ARRAY['技术要求','项目技术栈','交付技术标准','公司技术储备'], '按标题章节自动归类：技术要求、技术栈、技术标准相关章节', TRUE, 2),
-  ('role',    '岗位说明', ARRAY['岗位说明','岗位需求'], '按标题章节自动归类：岗位相关章节', TRUE, 3),
+  ('role',    '项目名称', ARRAY['项目名称','项目概况','项目简介'], '按标题章节自动归类：项目名称/项目概况相关章节', TRUE, 3),
   ('staff',   '人员需求', ARRAY['人员需求','人员资质','人员技术要求','人员技能要求'], '按标题章节自动归类：人员资质/技术/技能相关章节', TRUE, 4)
 ON CONFLICT DO NOTHING;
 

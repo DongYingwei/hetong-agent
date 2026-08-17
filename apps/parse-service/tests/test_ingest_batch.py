@@ -19,6 +19,7 @@ _SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 _DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "001_contracts.sql"
+_KEYWORD_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "004_configurable_keyword_hits.sql"
 _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -65,6 +66,7 @@ def pg():
         with conn.cursor() as cur:
             cur.execute(_DDL.read_text(encoding="utf-8"))
             cur.execute(_SEED.read_text(encoding="utf-8"))
+            cur.execute(_KEYWORD_DDL.read_text(encoding="utf-8"))
         conn.commit()
         yield conn, dsn
         conn.close()

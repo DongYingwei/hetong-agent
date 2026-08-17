@@ -57,6 +57,11 @@
           />
         </el-select>
 
+        <!-- 查询库 contract_modules 动态驱动，筛选命中该模块的合同。 -->
+        <el-select v-model="filters.moduleKey" placeholder="AI命中模块" clearable style="width: 150px" @change="loadData">
+          <el-option v-for="module in modules" :key="module.module_key" :label="module.name" :value="module.module_key" />
+        </el-select>
+
         <el-button @click="handleReset">重置</el-button>
 
         <div class="ml-auto">
@@ -147,6 +152,16 @@
           </template>
         </el-table-column>
 
+        <!-- 动态模块命中列：只展示查询库 contract_module_hits，不生成假关键词。 -->
+        <el-table-column v-for="module in modules" :key="module.module_key" :label="module.name" width="120" align="center">
+          <template #default="{ row }">
+            <span v-if="moduleHitText(row, module.module_key)" class="tag tag-green" style="font-size: 11px;">
+              {{ moduleHitText(row, module.module_key) }}
+            </span>
+            <span v-else class="text-gray-300 text-xs">—</span>
+          </template>
+        </el-table-column>
+
         <!-- 操作列 (1:1 还原规则: 未核对更多只有删除; 已核对更多有原文件, 编辑, 删除) -->
         <el-table-column label="操作" width="140" fixed="right">
           <template #default="{ row }">
@@ -217,7 +232,7 @@ import { ref, reactive, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
 import { Search, Upload, Download } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { contractApi } from '../api';
+import { contractApi, type ContractModule } from '../api/contractApi';
 import { useDictStore } from '../stores/dictStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { exportFullContractLedgerExcel } from '../utils/excelExporter';
@@ -240,6 +255,7 @@ const tableData = ref<ContractLedger[]>([]);
 const total = ref(0);
 const page = ref(1);
 const pageSize = ref(10);
+const modules = ref<ContractModule[]>([]);
 
 const filters = reactive({
   keyword: '',
@@ -247,10 +263,16 @@ const filters = reactive({
   contractType: '',
   hasAiKeyword: '',
   verifyStatus: '',
+  moduleKey: '',
 });
 
-onMounted(() => {
-  loadData();
+onMounted(async () => {
+  try {
+    const res = await contractApi.getModules();
+    if (res.code === 200) modules.value = res.data.list;
+  } finally {
+    loadData();
+  }
 });
 
 async function loadData() {
@@ -264,6 +286,7 @@ async function loadData() {
       contractType: filters.contractType,
       hasAiKeyword: filters.hasAiKeyword,
       verifyStatus: filters.verifyStatus,
+      moduleKey: filters.moduleKey,
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -280,8 +303,14 @@ function handleReset() {
   filters.contractType = '';
   filters.hasAiKeyword = '';
   filters.verifyStatus = '';
+  filters.moduleKey = '';
   page.value = 1;
   loadData();
+}
+
+function moduleHitText(row: ContractLedger, moduleKey: string): string {
+  const hit = row.module_hits?.find((item) => item.module_key === moduleKey && item.hit === 1);
+  return hit?.keywords || (hit ? '命中' : '');
 }
 
 function goToDetail(id: number) {
@@ -299,7 +328,6 @@ function handleOpenEditModal(row: ContractLedger) {
 
 function handleVerifyClick(row: ContractLedger) {
   if (row.verify_status === 1) {
-    // 已核对：只能只读查看人工核对页面
     router.push({ path: '/verify', query: { id: String(row.id), readonly: 'true' } });
   } else {
     // 未核对：进行人工核对
@@ -309,9 +337,7 @@ function handleVerifyClick(row: ContractLedger) {
 
 function handleActionClick(row: ContractLedger) {
   if (row.verify_status === 1) {
-    // 已核对：弹出合同核对信息 viewModal (1:1 还原 demo2.html)
-    currentViewRow.value = row;
-    showViewModal.value = true;
+    router.push({ path: '/verify', query: { id: String(row.id), readonly: 'true' } });
   } else {
     // 未核对：进行人工核对
     router.push({ path: '/verify', query: { id: String(row.id) } });

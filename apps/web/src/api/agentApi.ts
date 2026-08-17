@@ -16,16 +16,25 @@ export interface Citation {
 /** 查询智能体富格式返回（坑13 wrapper 契约）。 */
 export interface AgentChatResult {
   content: string;
-  tableData?: TableRowItem[];
-  sql?: string;
+  sessionId: string;
+  contracts?: Record<string, unknown>[];
+  summary?: { scope: string; contract_count: number; total_amount: number; missing_amount_count: number };
+  process?: Array<{ label: string; status: string }>;
   citations?: Citation[];
 }
+
+export interface AgentSession { id: string; title: string; created_at: string; updated_at: string; message_count: number; }
 
 export const agentApi = {
   /**
    * 调用查询智能体（网关 /agent/chat → CoreMind HTTP wrapper）。
    */
-  chat(data: { message: string; history?: { role: string; content: string }[] }): Promise<ApiResponse<AgentChatResult>> {
+  chat(data: { message: string; sessionId?: string }): Promise<ApiResponse<AgentChatResult>> {
     return request.post('/agent/chat', data);
   },
+  getSessions(): Promise<ApiResponse<{ list: AgentSession[] }>> { return request.get('/agent/sessions'); },
+  getSession(id: string): Promise<ApiResponse<{ session: AgentSession; messages: Array<{ role: 'user' | 'assistant'; content: string; result_data?: AgentChatResult }> }>> { return request.get(`/agent/sessions/${id}`); },
+  createSession(): Promise<ApiResponse<AgentSession>> { return request.post('/agent/sessions'); },
+  deleteSession(id: string): Promise<ApiResponse<null>> { return request.delete(`/agent/sessions/${id}`); },
+  clearSessions(): Promise<ApiResponse<null>> { return request.delete('/agent/sessions'); },
 };

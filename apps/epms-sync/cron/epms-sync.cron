@@ -1,0 +1,5 @@
+# 每天 02:30 增量同步 EPMS 订单（导出→下载附件→解析 md→AI 判定）
+# 安装方式（二选一）：
+#   1) 当前用户 crontab： crontab -e 追加本行
+#   2) 系统级： sudo cp epms-sync.cron /etc/cron.d/epms-sync && sudo chmod 644 /etc/cron.d/epms-sync
+30 2 * * * cd /home/wdy/data/code/hetong-agent/apps/epms-sync && /home/wdy/data/anaconda3/bin/python scripts/run_daily.py >> /home/wdy/data/code/hetong-agent/data/epms-sync.log 2>&1

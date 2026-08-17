@@ -2,7 +2,7 @@
 
 > 三层规划文档之一。**分期层**回答"分几步、什么顺序、每步目标"。
 > 关联：[需求 requirements.md](./requirements.md) · [任务分解 tasks.md](./tasks.md)
-> 最后更新：2026-08-13 · 状态：**草案，P0/P1 目标定位待用户拍板**（见 §0）。
+> 最后更新：2026-08-14 · 状态：P0 仍以“含原文的 RAG 数据 + 端到端验证”为未完成主线；审核台账 SQL 测试已可进行。
 
 ---
 
@@ -22,15 +22,15 @@
 
 ---
 
-## 1. 现状基线（进度快照 2026-08-13）
+## 1. 现状基线（进度快照 2026-08-14）
 
 | 层 | 已完成 | 待办 |
 |---|---|---|
 | ④ 契约 | [T01](./tasks.md#t01) ✅ · [G1](./tasks.md#g1) ✅(库+只读角色) | — |
-| ⑤ 解析 | [T02](./tasks.md#t02)[T03](./tasks.md#t03)[T04](./tasks.md#t04) ✅ · [G2](./tasks.md#g2) 🟢(单份跳通) | G2 批量 · [G4](./tasks.md#g4) 切段/真值 |
-| ③ 查询 | [T05](./tasks.md#t05)[T07](./tasks.md#t07) ✅ · [T06](./tasks.md#t06)[T08](./tasks.md#t08) 🟢 | [T09](./tasks.md#t09) · [G3](./tasks.md#g3) wrapper · [G5](./tasks.md#g5) rerank |
+| ⑤ 解析 | [T02](./tasks.md#t02)[T03](./tasks.md#t03)[T04](./tasks.md#t04) ✅ · [G2](./tasks.md#g2) 🟡(审核台账 59 条仅 SQL) | 含原文合同建向量 · [G4](./tasks.md#g4) 切段/真值 |
+| ③ 查询 | [T05](./tasks.md#t05)[T07](./tasks.md#t07) ✅ · [T06](./tasks.md#t06)[T08](./tasks.md#t08)[G3](./tasks.md#g3) ✅ | [T09](./tasks.md#t09) · [G5](./tasks.md#g5) rerank · 时延优化 |
 | ② 网关 | [T10](./tasks.md#t10) ✅ | — |
-| ① 前端 | — | [T11](./tasks.md#t11) |
+| ① 前端 | [T11](./tasks.md#t11) ✅ · 合同模块真实数据对齐 ✅ | [G6](./tasks.md#g6) 订单真实数据源接入 |
 
 **核心洞察**：主骨（schema/解析/两工具/网关）已成，**剩下的都是"接通 + 验证 + 补数据"**，无从零构建的大件。
 
@@ -44,10 +44,10 @@
 | 步骤 | 任务 | 产出物 | ✅ 完成判定（可执行） |
 |---|---|---|---|
 | **P0-1** | [G5](./tasks.md#g5) | reranker 8B 下集成测试修正 | `cd apps/query-agent && npx vitest run` → **28 绿**（当前 27 绿 1 红） |
-| **P0-2** | [G2](./tasks.md#g2) | 真实合同入库（≥1 份，现 QC 已入） | 只读账号查 `SELECT count(*) FROM contracts ≥1` + Milvus `num_entities ≥1`（脚本见下 §7） |
-| **P0-3** | [G3](./tasks.md#g3) | `/chat` HTTP 服务 + vendor 升 rc.2 | `curl -X POST localhost:<port>/chat -d '{"message":"...","history":[]}'` → 返回含 `content` 字段的 JSON（[C-CHAT](./tasks.md#契约锚点表)） |
+| **P0-2** | [G2](./tasks.md#g2) | 含原文合同入库并建向量 | `contracts` 至少 1 条 + Milvus 可查到该合同 chunks；59 条审核 Excel 仅能作为 SQL 测试数据 |
+| **P0-3** | [G3](./tasks.md#g3) | `/chat` HTTP 服务 + vendor 升 rc.2 | ✅ 已完成；后续拆分 Agent 调用耗时并优化当前超时兜底 |
 | **P0-4** | [T09](./tasks.md#t09) | eval 核心子集场景 | `cd apps/query-agent && coremind eval coremind.yaml` → **核心子集通过率 100%**（≥15 题；数值项标 skip） |
-| **P0-5** | [T11](./tasks.md#t11) | 前端接真实数据 UI | 前端手动冒烟：发问 → 回显真实答案 + SQL 折叠块/出处（**无自动化测试，人工截图为证**） |
+| **P0-5** | [T11](./tasks.md#t11) | 前端接真实数据 UI | ✅ 已接通；待有向量数据后补一条真实 RAG 问答冒烟截图 |
 
 **阶段 ✅ 判定（全绿才算 P0 完成）**：
 1. `npx vitest run`（查询侧 28 绿）

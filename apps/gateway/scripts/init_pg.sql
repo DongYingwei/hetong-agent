@@ -37,6 +37,45 @@ CREATE TABLE IF NOT EXISTS sys_user (
   delete_status SMALLINT     NOT NULL DEFAULT 0
 );
 
+-- 用户管理扩展字段：ALTER 兼容已部署过早期版本的运营库。
+ALTER TABLE sys_user
+  ADD COLUMN IF NOT EXISTS job_title VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS employee_id VARCHAR(50),
+  ADD COLUMN IF NOT EXISTS gender VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS email VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS telephone VARCHAR(30),
+  ADD COLUMN IF NOT EXISTS birthday DATE,
+  ADD COLUMN IF NOT EXISTS identity VARCHAR(50) NOT NULL DEFAULT 'normal',
+  ADD COLUMN IF NOT EXISTS resp_department VARCHAR(100),
+  ADD COLUMN IF NOT EXISTS sort INT NOT NULL DEFAULT 1000;
+
+-- 角色、菜单属于运营配置，必须与用户管理一同初始化。
+CREATE TABLE IF NOT EXISTS sys_role (
+  id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  role_code     VARCHAR(50)  NOT NULL UNIQUE,
+  role_name     VARCHAR(100) NOT NULL,
+  perm_key      VARCHAR(255),
+  sort          INT          NOT NULL DEFAULT 1,
+  status        SMALLINT     NOT NULL DEFAULT 1,
+  create_time   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  update_time   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  delete_status SMALLINT     NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS sys_menu (
+  id            INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name          VARCHAR(100) NOT NULL,
+  type          VARCHAR(20)  NOT NULL DEFAULT '菜单',
+  parent_id     INT          NOT NULL DEFAULT 0,
+  path          VARCHAR(255) NOT NULL DEFAULT '',
+  permission    VARCHAR(255) NOT NULL DEFAULT '',
+  sort          INT          NOT NULL DEFAULT 1,
+  status        SMALLINT     NOT NULL DEFAULT 1,
+  create_time   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  update_time   TIMESTAMPTZ  NOT NULL DEFAULT now(),
+  delete_status SMALLINT     NOT NULL DEFAULT 0
+);
+
 -- 2. 数据字典表
 CREATE TABLE IF NOT EXISTS sys_dict (
   id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -121,7 +160,7 @@ CREATE TABLE IF NOT EXISTS contract_history (
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['sys_user','sys_dict','contract_ledger','contract_keyword','contract_section'] LOOP
+  FOREACH t IN ARRAY ARRAY['sys_user','sys_role','sys_menu','sys_dict','contract_ledger','contract_keyword','contract_section'] LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_%1$s_upd ON %1$s', t);
     EXECUTE format('CREATE TRIGGER trg_%1$s_upd BEFORE UPDATE ON %1$s FOR EACH ROW EXECUTE FUNCTION set_update_time()', t);
   END LOOP;
@@ -130,9 +169,24 @@ END $$;
 -- ==================== 初始种子数据 ====================
 
 INSERT INTO sys_user (username, password, real_name, role, status) VALUES
-  ('admin', '53801c1df9e41f90b77ae9756980732b', '张三', 0, 1),
-  ('user',  '53801c1df9e41f90b77ae9756980732b', '李四', 1, 1)
+  ('admin', '055dbab3713754b7270332ccf534605b', '张三', 0, 1),
+  ('user',  '055dbab3713754b7270332ccf534605b', '李四', 1, 1)
 ON CONFLICT (username) DO UPDATE SET password = EXCLUDED.password;
+
+INSERT INTO sys_role (role_code, role_name, perm_key, sort, status) VALUES
+  ('admin', '系统管理员', '*', 1, 1),
+  ('contract_manager', '合同管理员', 'contract:*', 2, 1),
+  ('business_user', '业务用户', 'contract:view', 3, 1)
+ON CONFLICT (role_code) DO NOTHING;
+
+INSERT INTO sys_menu (name, type, parent_id, path, permission, sort, status) VALUES
+  ('合同台账', '菜单', 0, '/ledger', 'contract:view', 1, 1),
+  ('合同管理', '菜单', 0, '/contracts', 'contract:view', 2, 1),
+  ('系统管理', '目录', 0, '/system', '', 90, 1),
+  ('用户管理', '菜单', 0, '/system/users', 'system:user', 91, 1),
+  ('角色管理', '菜单', 0, '/system/roles', 'system:role', 92, 1),
+  ('菜单管理', '菜单', 0, '/system/menus', 'system:menu', 93, 1)
+ON CONFLICT DO NOTHING;
 
 INSERT INTO sys_dict (dict_type, dict_label, dict_value, sort_order, remark) VALUES
   ('contract_status', '流水中', '1', 1, '审批流水中'),

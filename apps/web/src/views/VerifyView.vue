@@ -66,13 +66,14 @@
           </div>
         </div>
 
-        <!-- 合同原文（MinerU 解析的 Markdown，真实内容） -->
+        <!-- 优先原始 PDF；草稿上传尚无持久化源文件时才回退 MinerU Markdown。 -->
         <div class="flex-1 overflow-y-auto p-4 bg-gray-100/60">
-          <div class="bg-white shadow border border-gray-200 rounded-lg p-6 text-gray-700 leading-relaxed text-[13px]">
+          <div v-if="originalPdfUrl" class="h-full bg-white shadow border border-gray-200 rounded-lg overflow-hidden">
+            <iframe :src="originalPdfUrl" class="w-full h-full border-0" title="合同原始 PDF" />
+          </div>
+          <div v-else class="bg-white shadow border border-gray-200 rounded-lg p-6 text-gray-700 leading-relaxed text-[13px]">
             <div v-if="mineruMd" class="markdown-body" v-html="renderMarkdown(mineruMd)"></div>
-            <div v-else class="text-gray-400 text-center py-16">
-              暂无合同原文（解析未返回 MinerU 文本，或尚未进入草稿模式）
-            </div>
+            <div v-else class="text-gray-400 text-center py-16">暂无已关联的合同原始 PDF</div>
           </div>
         </div>
       </div>
@@ -242,7 +243,7 @@
               <div class="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
                 <div class="flex items-center justify-between mb-2">
                   <div class="font-medium text-[#1A1A1A]">服务内容<span class="text-gray-400 font-normal">（服务标的）</span></div>
-                  <span class="tag tag-green" style="font-size: 10px">命中 3 项</span>
+                  <span class="tag" :class="keywordCount('服务内容') ? 'tag-green' : 'tag-gray'" style="font-size: 10px">{{ keywordCount('服务内容') ? `命中 ${keywordCount('服务内容')} 项` : '未命中' }}</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5 items-center">
                   <span
@@ -268,7 +269,7 @@
               <div class="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
                 <div class="flex items-center justify-between mb-2">
                   <div class="font-medium text-[#1A1A1A]">技术要求<span class="text-gray-400 font-normal">（技术储备）</span></div>
-                  <span class="tag tag-green" style="font-size: 10px">命中 2 项</span>
+                  <span class="tag" :class="keywordCount('技术要求') ? 'tag-green' : 'tag-gray'" style="font-size: 10px">{{ keywordCount('技术要求') ? `命中 ${keywordCount('技术要求')} 项` : '未命中' }}</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5 items-center">
                   <span
@@ -290,27 +291,27 @@
                 </div>
               </div>
 
-              <!-- 岗位说明 -->
+              <!-- 项目名称（module_key 沿用 role，保证历史外键稳定） -->
               <div class="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
                 <div class="flex items-center justify-between mb-2">
-                  <div class="font-medium text-[#1A1A1A]">岗位说明</div>
-                  <span class="tag tag-gray" style="font-size: 10px">未命中</span>
+                  <div class="font-medium text-[#1A1A1A]">项目名称</div>
+                  <span class="tag" :class="keywordCount('项目名称') ? 'tag-green' : 'tag-gray'" style="font-size: 10px">{{ keywordCount('项目名称') ? `命中 ${keywordCount('项目名称')} 项` : '未命中' }}</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5 items-center">
-                  <span v-if="currentForm.keywords['岗位说明'].length === 0" class="text-gray-400">AI未识别到关键词</span>
+                  <span v-if="currentForm.keywords['项目名称'].length === 0" class="text-gray-400">AI未识别到关键词</span>
                   <span
-                    v-for="(kw, kIdx) in currentForm.keywords['岗位说明']"
+                    v-for="(kw, kIdx) in currentForm.keywords['项目名称']"
                     :key="kIdx"
                     class="tag tag-green inline-flex items-center gap-1"
                     style="font-size: 11px"
                   >
                     {{ kw }}
-                    <el-icon v-if="!isReadOnly" class="cursor-pointer hover:text-red-500" @click="removeKeyword('岗位说明', kIdx)"><Close /></el-icon>
+                    <el-icon v-if="!isReadOnly" class="cursor-pointer hover:text-red-500" @click="removeKeyword('项目名称', kIdx)"><Close /></el-icon>
                   </span>
                   <button
                     v-if="!isReadOnly"
                     class="inline-flex items-center gap-0.5 text-xs text-[#049667] border border-dashed border-[#049667] rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                    @click="addKeywordPrompt('岗位说明')"
+                    @click="addKeywordPrompt('项目名称')"
                   >
                     + 添加
                   </button>
@@ -321,7 +322,7 @@
               <div class="border border-gray-200 rounded-lg p-3 bg-gray-50/50">
                 <div class="flex items-center justify-between mb-2">
                   <div class="font-medium text-[#1A1A1A]">人员需求</div>
-                  <span class="tag tag-gray" style="font-size: 10px">未命中</span>
+                  <span class="tag" :class="keywordCount('人员需求') ? 'tag-green' : 'tag-gray'" style="font-size: 10px">{{ keywordCount('人员需求') ? `命中 ${keywordCount('人员需求')} 项` : '未命中' }}</span>
                 </div>
                 <div class="flex flex-wrap gap-1.5 items-center">
                   <span v-if="currentForm.keywords['人员需求'].length === 0" class="text-gray-400">AI未识别到关键词</span>
@@ -373,7 +374,8 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { Back, Search, ZoomIn, ZoomOut, Close } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { contractApi, parseApi } from '../api';
+import { contractApi, keywordApi, parseApi } from '../api';
+import type { ContractKeywordHit } from '../api/contractApi';
 import { renderMarkdown } from '../utils/markdown';
 
 const route = useRoute();
@@ -387,6 +389,9 @@ const targetId = computed(() => (route.query.id ? Number(route.query.id) : null)
 const draftId = computed(() => (route.query.draftId ? Number(route.query.draftId) : null));
 // 合同原文（MinerU 解析的 Markdown，草稿模式渲染到左栏）。
 const mineruMd = ref('');
+const originalPdfUrl = ref('');
+const keywordHits = ref<ContractKeywordHit[]>([]);
+const keywordIdByName = ref<Record<string, number>>({});
 
 // 多合同核对 Tab 视图数据
 const fileTabs = ref([
@@ -416,7 +421,7 @@ const fileTabs = ref([
       keywords: {
         服务内容: ['智能运维', 'AIOps', '智能算法'],
         技术要求: ['机器学习', '深度学习'],
-        岗位说明: [] as string[],
+        项目名称: [] as string[],
         人员需求: [] as string[],
       },
     },
@@ -446,7 +451,7 @@ const fileTabs = ref([
       keywords: {
         服务内容: ['数据标注', '模型训练'],
         技术要求: ['Python', 'PyTorch'],
-        岗位说明: ['数据标注员'],
+        项目名称: ['数据标注员'],
         人员需求: ['算法工程师'],
       },
     },
@@ -476,7 +481,7 @@ const fileTabs = ref([
       keywords: {
         服务内容: ['无人机巡检', '图像识别'],
         技术要求: ['计算机视觉', 'CV算法'],
-        岗位说明: ['巡检专家'],
+        项目名称: ['巡检专家'],
         人员需求: [] as string[],
       },
     },
@@ -512,8 +517,8 @@ onMounted(async () => {
         form.taxRate = f.tax_rate || '';
         form.settlementTerms = f.settlement_terms || '';
         // 模块命中 → 核对页关键词区（keywords 是逗号分隔字符串）
-        const modMap: Record<string, string> = { service: '服务内容', tech: '技术要求', role: '岗位说明', staff: '人员需求' };
-        const kw: Record<string, string[]> = { 服务内容: [], 技术要求: [], 岗位说明: [], 人员需求: [] };
+        const modMap: Record<string, string> = { service: '服务内容', tech: '技术要求', role: '项目名称', staff: '人员需求' };
+        const kw: Record<string, string[]> = { 服务内容: [], 技术要求: [], 项目名称: [], 人员需求: [] };
         for (const h of res.data.module_hits || []) {
           const name = modMap[h.module_key];
           if (name && h.keywords) kw[name] = String(h.keywords).split(',').filter(Boolean);
@@ -542,6 +547,24 @@ onMounted(async () => {
         fileTabs.value[0].form.assessmentLine = item.assessment_line || '通用';
         fileTabs.value[0].form.contractStatus = item.contract_status;
         fileTabs.value[0].verified = item.verify_status === 1;
+        const [hitRes, keywordRes] = await Promise.all([
+          contractApi.getKeywordHits(item.id),
+          keywordApi.getList({ page: 1, pageSize: 100 }),
+        ]);
+        if (hitRes.code === 200) {
+          keywordHits.value = hitRes.data.list || [];
+          const modMap: Record<string, string> = { service: '服务内容', tech: '技术要求', role: '项目名称', staff: '人员需求', project: '项目名称' };
+          const grouped: Record<string, string[]> = { 服务内容: [], 技术要求: [], 项目名称: [], 人员需求: [] };
+          for (const hit of keywordHits.value) {
+            const section = hit.module_key ? modMap[hit.module_key] : undefined;
+            if (section && grouped[section] && !grouped[section].includes(hit.keyword_name)) grouped[section].push(hit.keyword_name);
+          }
+          fileTabs.value[0].form.keywords = grouped;
+        }
+        if (keywordRes.code === 200) {
+          keywordIdByName.value = Object.fromEntries((keywordRes.data.list || []).map((x: any) => [x.keyword_name, x.id]));
+        }
+        await loadOriginalPdf(item.id);
       }
     } catch (e) {
       // 降级使用默认展示数据
@@ -549,15 +572,38 @@ onMounted(async () => {
   }
 });
 
+async function loadOriginalPdf(contractId: number) {
+  try {
+    const response = await fetch(contractApi.getOriginalPdfUrl(contractId), {
+      headers: { Authorization: `Bearer ${localStorage.getItem('contract_token') || ''}` },
+    });
+    if (!response.ok) return;
+    const blob = await response.blob();
+    originalPdfUrl.value = URL.createObjectURL(blob);
+  } catch {
+    // 原始文件缺失时自然回退 MinerU Markdown / 空状态，不影响右侧台账信息。
+  }
+}
+
 const currentTab = computed(() => fileTabs.value[activeTabIndex.value] || fileTabs.value[0]);
 const currentForm = computed(() => currentTab.value.form);
+
+function keywordCount(section: '服务内容' | '技术要求' | '项目名称' | '人员需求') {
+  return currentForm.value.keywords[section]?.length || 0;
+}
 
 function switchFileTab(index: number) {
   activeTabIndex.value = index;
 }
 
-function removeKeyword(sectionKey: string, index: number) {
+async function removeKeyword(sectionKey: string, index: number) {
   if (isReadOnly.value) return;
+  const keyword = currentForm.value.keywords[sectionKey as keyof typeof currentForm.value.keywords][index];
+  const moduleMap: Record<string, string> = { 服务内容: 'service', 技术要求: 'tech', 项目名称: 'role', 人员需求: 'staff' };
+  const keywordId = keywordIdByName.value[keyword];
+  if (targetId.value && keywordId && moduleMap[sectionKey]) {
+    await contractApi.saveKeywordOverride(targetId.value, { module_key: moduleMap[sectionKey], keyword_id: keywordId, action: 'exclude' });
+  }
   currentForm.value.keywords[sectionKey as keyof typeof currentForm.value.keywords].splice(index, 1);
 }
 
@@ -570,9 +616,20 @@ function addKeywordPrompt(sectionKey: string) {
   }).then(({ value }) => {
     if (value && value.trim()) {
       const kwList = currentForm.value.keywords[sectionKey as keyof typeof currentForm.value.keywords];
-      if (!kwList.includes(value.trim())) {
-        kwList.push(value.trim());
-        ElMessage.success(`已为【${sectionKey}】添加关键词: ${value.trim()}`);
+      const keyword = value.trim();
+      const moduleMap: Record<string, string> = { 服务内容: 'service', 技术要求: 'tech', 项目名称: 'role', 人员需求: 'staff' };
+      const keywordId = keywordIdByName.value[keyword];
+      if (targetId.value && (!keywordId || !moduleMap[sectionKey])) {
+        ElMessage.error('只能添加关键词管理中已启用的父关键词');
+        return;
+      }
+      if (!kwList.includes(keyword)) {
+        if (targetId.value && keywordId) {
+          contractApi.saveKeywordOverride(targetId.value, { module_key: moduleMap[sectionKey], keyword_id: keywordId, action: 'include' })
+            .catch(() => ElMessage.error('保存关键词核对失败'));
+        }
+        kwList.push(keyword);
+        ElMessage.success(`已为【${sectionKey}】添加关键词: ${keyword}`);
       }
     }
   });

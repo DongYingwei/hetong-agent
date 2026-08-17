@@ -39,4 +39,8 @@ export const keywordApi = {
   removeSubWord(keyword_id: number, sub_word: string): Promise<ApiResponse<null>> {
     return request.post('/keyword/sub/remove', { keyword_id, sub_word });
   },
+
+  rescan(overwriteManual = false): Promise<ApiResponse<{ contracts: number }>> {
+    return request.post('/keyword/rescan', { overwrite_manual: overwriteManual });
+  },
 };

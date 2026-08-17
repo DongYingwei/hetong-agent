@@ -34,27 +34,30 @@
         </el-input>
 
         <el-select
-          v-model="filters.customerLine"
-          placeholder="全部客户线"
+          v-model="filters.roleAi"
+          placeholder="项目名称"
           clearable
           style="width: 140px"
           @change="loadData"
         >
-          <el-option label="运营商" value="运营商" />
-          <el-option label="中兴" value="中兴" />
-          <el-option label="软件" value="软件" />
-          <el-option label="其他" value="其他" />
+          <el-option label="AI" value="1" />
         </el-select>
 
         <el-select
-          v-model="filters.orderType"
-          placeholder="全部订单类型"
+          v-model="filters.serviceAi"
+          placeholder="服务内容"
           clearable
           style="width: 140px"
           @change="loadData"
         >
-          <el-option label="ARP" value="ARP" />
-          <el-option label="ASP" value="ASP" />
+          <el-option label="AI" value="1" />
+        </el-select>
+
+        <el-select v-model="filters.techAi" placeholder="技术要求" clearable style="width: 140px" @change="loadData">
+          <el-option label="AI" value="1" />
+        </el-select>
+        <el-select v-model="filters.staffAi" placeholder="人员要求" clearable style="width: 140px" @change="loadData">
+          <el-option label="AI" value="1" />
         </el-select>
 
         <el-button @click="handleReset">重置</el-button>
@@ -66,9 +69,12 @@
       <el-table :data="tableData" v-loading="loading" stripe style="width: 100%">
         <el-table-column prop="project_no" label="项目编号" width="120">
           <template #default="{ row }">
-            <span class="text-[#049667] font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">
-              {{ row.project_no }}
-            </span>
+            <div class="flex items-center gap-1.5 min-w-0">
+              <span class="text-[#049667] font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">{{ row.project_no }}</span>
+              <el-tooltip v-if="row.name_mismatch === 1 || row.name_mismatch === true" content="数据源标记：订单名称与实际内容不符" placement="top">
+                <span class="inline-flex text-[#DC2626] shrink-0" aria-label="订单名称不符">⚠</span>
+              </el-tooltip>
+            </div>
           </template>
         </el-table-column>
 
@@ -128,12 +134,9 @@
           </template>
         </el-table-column>
 
-        <!-- 命中关键词 (固定右侧) -->
-        <el-table-column label="命中关键词" width="110" fixed="right" align="center">
+        <el-table-column v-for="module in aiModules" :key="module.key" :label="module.name" width="100" align="center">
           <template #default="{ row }">
-            <span v-if="row.hit_keyword || (row.ai_keywords && row.ai_keywords.length > 0)" class="tag tag-green" style="font-size: 11px">
-              {{ row.hit_keyword || (row.ai_keywords ? row.ai_keywords[0] : 'AI') }}
-            </span>
+            <span v-if="moduleHit(row, module.key)" class="tag tag-green" style="font-size: 11px">AI</span>
             <span v-else class="text-gray-300 text-xs">—</span>
           </template>
         </el-table-column>
@@ -142,7 +145,7 @@
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" style="color: #049667;" @click="handleOpenDetail(row)">
-              查看详情
+              详情
             </el-button>
           </template>
         </el-table-column>
@@ -188,14 +191,21 @@ const showDetailModal = ref(false);
 const currentOrder = ref<OrderLedger | null>(null);
 
 const tableData = ref<OrderLedger[]>([]);
+const aiModules = [
+  { key: 'role', name: '项目名称' }, { key: 'service', name: '服务内容' },
+  { key: 'tech', name: '技术要求' }, { key: 'staff', name: '人员要求' },
+];
+
+function moduleHit(row: OrderLedger, key: string) {
+  return !!row.module_hits?.some((x) => x.module_key === key && x.hit === 1);
+}
 const total = ref(0);
 const page = ref(1);
 const pageSize = ref(10);
 
 const filters = reactive({
   keyword: '',
-  customerLine: '',
-  orderType: '',
+  roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
 
 onMounted(() => {
@@ -209,8 +219,8 @@ async function loadData() {
       page: page.value,
       pageSize: pageSize.value,
       keyword: filters.keyword,
-      customerLine: filters.customerLine,
-      orderType: filters.orderType,
+      roleAi: filters.roleAi, serviceAi: filters.serviceAi,
+      techAi: filters.techAi, staffAi: filters.staffAi,
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -223,8 +233,7 @@ async function loadData() {
 
 function handleReset() {
   filters.keyword = '';
-  filters.customerLine = '';
-  filters.orderType = '';
+  filters.roleAi = ''; filters.serviceAi = ''; filters.techAi = ''; filters.staffAi = '';
   page.value = 1;
   loadData();
 }

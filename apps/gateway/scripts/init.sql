@@ -97,11 +97,11 @@ CREATE TABLE IF NOT EXISTS `contract_history` (
 
 -- ==================== 初始种子数据 ====================
 
--- 插入默认管理员与测试账号 (password 为 admin123 加密后的MD5/Hash: 0192023a7bbd73250516f069df18b500)
+-- 插入默认管理员与测试账号（默认密码 howso123 的 MD5+项目盐哈希）
 INSERT INTO `sys_user` (`username`, `password`, `real_name`, `role`, `status`) VALUES
-('admin', '53801c1df9e41f90b77ae9756980732b', '张三', 0, 1),
-('user', '53801c1df9e41f90b77ae9756980732b', '李四', 1, 1)
-ON DUPLICATE KEY UPDATE `password`='53801c1df9e41f90b77ae9756980732b';
+('admin', '055dbab3713754b7270332ccf534605b', '张三', 0, 1),
+('user', '055dbab3713754b7270332ccf534605b', '李四', 1, 1)
+ON DUPLICATE KEY UPDATE `password`='055dbab3713754b7270332ccf534605b';
 
 -- 插入数据字典
 INSERT INTO `sys_dict` (`dict_type`, `dict_label`, `dict_value`, `sort_order`, `remark`) VALUES

@@ -35,11 +35,11 @@
           </div>
           <div>
             <label class="text-xs text-gray-400">合同期</label>
-            <div class="text-sm text-gray-500 mt-0.5">—</div>
+            <div class="text-sm text-gray-500 mt-0.5">{{ formatDate(contractData.start_date) || '—' }} 至 {{ formatDate(contractData.end_date) || '—' }}</div>
           </div>
           <div>
-            <label class="text-xs text-gray-400">归属地</label>
-            <div class="text-sm text-gray-500 mt-0.5">—</div>
+            <label class="text-xs text-gray-400">框架简称</label>
+            <div class="text-sm text-gray-500 mt-0.5">{{ contractData.framework_alias || '—' }}</div>
           </div>
         </div>
       </div>
@@ -54,7 +54,7 @@
           </div>
           <div>
             <label class="text-xs text-gray-400">签约方</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.signing_party || '—' }}</div>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.signing_entity || '—' }}</div>
           </div>
           <div>
             <label class="text-xs text-gray-400">合同类型</label>
@@ -80,8 +80,8 @@
         <h4 class="text-xs font-semibold text-gray-400 mb-2.5 pb-1.5 border-b border-gray-100">合同-金额</h4>
         <div class="grid grid-cols-2 gap-x-6 gap-y-3">
           <div>
-            <label class="text-xs text-gray-400">价格方式</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.price_type || '固定' }}</div>
+            <label class="text-xs text-gray-400">金额口径</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.amount_type || '—' }}</div>
           </div>
           <div>
             <label class="text-xs text-gray-400">合同金额（含税）</label>
@@ -89,11 +89,11 @@
           </div>
           <div>
             <label class="text-xs text-gray-400">税率</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.tax_rate ? contractData.tax_rate + '%' : '—' }}</div>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.tax_rate || '—' }}</div>
           </div>
           <div class="col-span-2">
-            <label class="text-xs text-gray-400">付款条件</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.payment_terms || '—' }}</div>
+            <label class="text-xs text-gray-400">结算条款</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.settlement_terms || '—' }}</div>
           </div>
         </div>
       </div>
@@ -103,24 +103,24 @@
         <h4 class="text-xs font-semibold text-gray-400 mb-2.5 pb-1.5 border-b border-gray-100">合同-其他</h4>
         <div class="grid grid-cols-2 gap-x-6 gap-y-3">
           <div>
-            <label class="text-xs text-gray-400">是否涉及担保</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.has_guarantee ? '是' : '否' }}</div>
+            <label class="text-xs text-gray-400">是否涉及后评估</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.post_eval || '—' }}</div>
           </div>
           <div>
-            <label class="text-xs text-gray-400">履约证金</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.performance_bond ? formatCurrency(contractData.performance_bond) : '—' }}</div>
+            <label class="text-xs text-gray-400">履约保证金</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.deposit_amount ? formatCurrency(contractData.deposit_amount) : '—' }}</div>
           </div>
           <div class="col-span-2">
-            <label class="text-xs text-gray-400">履约证金返还</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.bond_return_rule || '—' }}</div>
+            <label class="text-xs text-gray-400">履约保证金退还条件</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.deposit_refund || '—' }}</div>
           </div>
           <div class="col-span-2">
-            <label class="text-xs text-gray-400">纠纷解决方式</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.dispute_method || '协商解决，提交仲裁委员会仲裁' }}</div>
+            <label class="text-xs text-gray-400">仲裁方式</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.arbitration || '—' }}</div>
           </div>
           <div>
-            <label class="text-xs text-gray-400">管辖权</label>
-            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.jurisdiction || '—' }}</div>
+            <label class="text-xs text-gray-400">授权人</label>
+            <div class="text-sm text-[#1A1A1A] mt-0.5">{{ contractData.authorizer || '—' }}</div>
           </div>
         </div>
       </div>
@@ -242,26 +242,10 @@ const aiKeywords = computed(() => {
   const d = props.contractData as any;
   if (!d) return [];
 
-  // 尝试从 ai_keywords 字段解析（JSON字符串或已解析对象）
-  let parsed: any = null;
-  if (d.ai_keywords) {
-    try {
-      parsed = typeof d.ai_keywords === 'string' ? JSON.parse(d.ai_keywords) : d.ai_keywords;
-    } catch (e) {}
-  }
-
-  if (parsed && Array.isArray(parsed)) return parsed;
-
-  // 从关键词字段构建默认4格
-  const sections = [
-    { title: '服务', tags: d.service_keywords ? (Array.isArray(d.service_keywords) ? d.service_keywords : [d.service_keywords]) : [] },
-    { title: '技术要求', tags: d.tech_keywords ? (Array.isArray(d.tech_keywords) ? d.tech_keywords : [d.tech_keywords]) : [] },
-    { title: '岗位说明', tags: d.position_keywords ? (Array.isArray(d.position_keywords) ? d.position_keywords : [d.position_keywords]) : [] },
-    { title: '人员', tags: d.personnel_keywords ? (Array.isArray(d.personnel_keywords) ? d.personnel_keywords : [d.personnel_keywords]) : [] },
-  ];
-
-  const hasAny = sections.some(s => s.tags.length > 0);
-  return hasAny ? sections : [];
+  return (d.module_hits || []).map((hit: any) => ({
+    title: hit.module_key,
+    tags: hit.hit === 1 && hit.keywords ? String(hit.keywords).split(',').filter(Boolean) : [],
+  }));
 });
 
 function handleGoEdit() {

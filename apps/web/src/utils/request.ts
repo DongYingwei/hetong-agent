@@ -19,7 +19,8 @@ const getBaseUrl = () => {
  */
 const request = axios.create({
   baseURL: getBaseUrl(),
-  timeout: 60000,
+  // 比网关 CoreMind 代理预算多留 5s，避免浏览器抢先报 Axios 超时。
+  timeout: 125000,
 });
 
 // 请求拦截器：自动注入 Authorization Token 报头

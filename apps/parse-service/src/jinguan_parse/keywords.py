@@ -8,7 +8,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-import ahocorasick
+try:
+    import ahocorasick
+except ModuleNotFoundError:  # 部署环境缺少可选 C 扩展时保持精确匹配可用。
+    ahocorasick = None
 
 
 @dataclass
@@ -25,18 +28,20 @@ class KeywordMatcher:
     """
 
     def __init__(self, taxonomy: dict[str, list[str]]) -> None:
-        self._automaton = ahocorasick.Automaton()
+        self._automaton = ahocorasick.Automaton() if ahocorasick is not None else None
         self._word_to_cat: dict[str, str] = {}
         for category, words in taxonomy.items():
             for w in words:
                 if not w:
                     continue
                 self._word_to_cat[w] = category
-                self._automaton.add_word(w, w)
+                if self._automaton is not None:
+                    self._automaton.add_word(w, w)
         # 空词表：automaton 无任何词，make_automaton 会抛错。此时 match 恒返回未命中。
         self._empty = len(self._word_to_cat) == 0
         if not self._empty:
-            self._automaton.make_automaton()
+            if self._automaton is not None:
+                self._automaton.make_automaton()
 
     def match(self, text: str) -> KeywordHit:
         if self._empty:
@@ -45,7 +50,12 @@ class KeywordMatcher:
         found_cats: list[str] = []
         seen_w: set[str] = set()
         seen_c: set[str] = set()
-        for _end, word in self._automaton.iter(text or ""):
+        # Aho-Corasick 不可用时使用同样的精确子串语义兜底；词表规模小，
+        # 仅牺牲批量扫描性能，不改变命中结果。
+        matches = self._automaton.iter(text or "") if self._automaton is not None else (
+            (0, word) for word in self._word_to_cat if word in (text or "")
+        )
+        for _end, word in matches:
             if word not in seen_w:
                 seen_w.add(word)
                 found_words.append(word)

@@ -22,6 +22,33 @@ fixtures/demo_mineru.json       # demo MinerU 段输入
 cd jinguan-parse && python3 -m pytest tests/ -v
 ```
 
+## 批量 PDF 转 Markdown（可追溯、可复用）
+
+```bash
+cd apps/parse-service
+./scripts/batch_pdf_to_markdown.py /path/to/pdfs
+```
+
+默认在 PDF 目录创建 `md-pdf/`，并保持原目录内的相对层级；目录中的 `.doc/.docx`
+会自动忽略。每个 Markdown 文件名带原 PDF 的 SHA-256 前缀，
+`md-pdf/manifest.json` 记录完整的 `pdf_sha256 → markdown_file`、原始相对路径、大小和
+转换时间。再次运行会按内容指纹跳过；PDF 改名或从上传临时目录重传也可直接查询：
+
+```bash
+python3 scripts/batch_pdf_to_markdown.py \
+  --lookup /path/to/new-upload.pdf --output-dir /path/to/pdfs/md-pdf
+```
+
+多个 PDF/目录可混合处理；此时请明确输出目录。默认以输入的共同父目录保留层级，
+必要时可用 `--source-root` 指定共同根目录：
+
+```bash
+./scripts/batch_pdf_to_markdown.py /data/contracts /data/legal/a.pdf \
+  --output-dir /data/md-pdf --source-root /data
+```
+
+需要重转时加 `--force`。该工具只调用 MinerU、写本地 Markdown/映射，不写数据库、不建向量。
+
 ## 尚未做（后续工单）
 
 - 真实 MinerU 调用 + LLM 分组抽取 20 AI 字段 → T03（需 G3 模块锚点清单）

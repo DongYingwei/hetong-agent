@@ -4,8 +4,8 @@
     <div class="page-header-card mb-4">
       <div class="flex items-center justify-between">
         <div>
-          <h1 class="text-2xl font-bold text-[#1A1A1A]">合同模块</h1>
-          <p class="text-xs text-gray-500 mt-1">管理合同模块定义，配置关键词检索范围</p>
+          <h1 class="text-2xl font-bold text-[#1A1A1A]">模块配置</h1>
+          <p class="text-xs text-gray-500 mt-1">管理合同、订单的模块定义与关键词检索范围</p>
         </div>
         <el-button
           type="primary"
@@ -34,7 +34,10 @@
               </div>
               <h3 class="text-base font-semibold text-[#1A1A1A]">{{ item.section_title }}</h3>
             </div>
-            <span class="tag tag-green">启用</span>
+            <div class="flex gap-1.5">
+              <span class="tag tag-blue">{{ scopeLabel(item.scope) }}</span>
+              <span class="tag tag-green">启用</span>
+            </div>
           </div>
 
           <!-- 对应合同内模块名称 Tags List -->
@@ -111,6 +114,10 @@ async function loadData() {
 function parseSubNames(subNamesStr?: string): string[] {
   if (!subNamesStr) return [];
   return subNamesStr.split(',').filter(Boolean);
+}
+
+function scopeLabel(scope?: string) {
+  return ({ contract: '仅合同', order: '仅订单', all: '合同+订单' } as Record<string, string>)[scope || 'all'];
 }
 
 function handleCreate() {

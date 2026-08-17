@@ -38,6 +38,27 @@ export interface ContractLedger {
   verify_status: number; // 0未核对 1已核对 2异常
   warning_status?: number;
   create_time?: string;
+  // 查询库 contract_module_hits 的真实命中明细（动态模块列使用）。
+  module_hits?: Array<{
+    module_key: string;
+    hit: number;
+    keywords?: string | null;
+    category?: string | null;
+    raw_text?: string | null;
+  }>;
+  customer_contract_no?: string | null;
+  framework_alias?: string | null;
+  signing_entity?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  amount_type?: string | null;
+  tax_rate?: string | null;
+  settlement_terms?: string | null;
+  post_eval?: string | null;
+  deposit_amount?: number | null;
+  deposit_refund?: string | null;
+  arbitration?: string | null;
+  authorizer?: string | null;
 }
 
 export interface ContractKeyword {
@@ -52,7 +73,7 @@ export interface ContractKeyword {
 }
 
 export interface ContractSection {
-  id: number;
+  id: number | string;
   section_title: string;
   category?: string;
   sub_names?: string;
@@ -63,6 +84,8 @@ export interface ContractSection {
   content?: string;
   version?: string;
   create_time?: string;
+  /** 适配范围：合同、订单或二者通用。 */
+  scope?: 'contract' | 'order' | 'all';
 }
 
 export interface SysFile {
@@ -97,6 +120,16 @@ export interface OrderLedger {
   attachment_count: number;
   has_eml: string; // '是' | '否'
   hit_keyword?: string;
+  ai_keywords?: string[];
+  /** 附件经本地模型按合同同一套四模块归类后的命中结果。 */
+  module_hits?: Array<{
+    module_key: 'role' | 'service' | 'tech' | 'staff';
+    hit: number;
+    keywords?: string | null;
+    raw_text?: string | null;
+  }>;
+  /** 订单数据源明确标出的名称不一致，不由前端自行推断。 */
+  name_mismatch?: number | boolean;
   order_type?: string; // ARP / ASP
   // 详情丰富字段 (1:1 demo3.html)
   detail_project_no?: string;
@@ -120,6 +153,8 @@ export interface OrderLedger {
   redemption_days?: number;
   is_last_order?: string;
   detail_amount_ex_tax?: number;
+  detail_tax_rate?: number;
+  detail_amount?: number;
   deduct_amount?: number;
   deduct_amount_ex_tax?: number;
   stop_invoice_amount?: number;
@@ -148,6 +183,4 @@ export interface OrderLedger {
   update_time?: string;
   auditor?: string;
   audit_time?: string;
-  ai_keywords?: any;
 }
-

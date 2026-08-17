@@ -7,8 +7,10 @@ export const orderApi = {
     page?: number;
     pageSize?: number;
     keyword?: string;
-    customerLine?: string;
-    orderType?: string;
+    roleAi?: string;
+    serviceAi?: string;
+    techAi?: string;
+    staffAi?: string;
   }): Promise<ApiResponse<PageResult<OrderLedger>>> {
     return request.get('/order/list', { params });
   },
@@ -21,5 +23,9 @@ export const orderApi = {
   // 更新订单AI关键词
   updateKeywords(id: number, keywords: string[]): Promise<ApiResponse<any>> {
     return request.post(`/order/update-keywords`, { id, keywords });
+  },
+
+  update(id: number, data: Partial<OrderLedger>): Promise<ApiResponse<{ id: number }>> {
+    return request.put(`/order/detail/${id}`, data);
   },
 };

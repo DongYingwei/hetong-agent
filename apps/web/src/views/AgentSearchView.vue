@@ -26,8 +26,8 @@
         >
           <div class="truncate font-medium">{{ item.title }}</div>
           <div class="text-[10px] text-gray-400 flex items-center justify-between">
-            <span>{{ item.time }}</span>
-            <span class="tag tag-gray text-[9px]">{{ item.type === 'order' ? '订单检索' : '合同检索' }}</span>
+            <span>{{ String(item.updated_at || '').replace('T', ' ').slice(0, 16) }}</span>
+            <span class="tag tag-gray text-[9px]">合同检索</span>
           </div>
         </div>
       </div>
@@ -42,7 +42,7 @@
             <h2 class="text-base font-bold text-gray-800">综合检索智能体</h2>
             <span class="tag tag-green">AI 增强版</span>
           </div>
-          <p class="text-xs text-gray-500 mt-0.5">支持对全量合同文本及订单台账信息进行自然语言交互检索</p>
+          <p class="text-xs text-gray-500 mt-0.5">支持对全量合同台账与合同正文进行自然语言交互检索</p>
         </div>
         <div class="flex items-center gap-3">
           <div class="text-right font-mono text-xs text-gray-400">
@@ -71,6 +71,32 @@
               <div class="bg-white border border-gray-200 text-xs py-3 px-4 rounded-2xl rounded-tl-none leading-relaxed shadow-sm text-[#1A1A1A] min-w-0">
                 <!-- Markdown 正文（剥离 SQL 块与表格，只渲染 prose） -->
                 <div class="markdown-body" v-html="renderContent(msg.content)"></div>
+
+                <div v-if="msg.process?.length" class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                  <span class="font-medium">检索过程：</span>{{ msg.process.map((item) => item.label).join(' → ') }}
+                </div>
+
+                <div v-if="msg.contracts?.length" class="mt-3 space-y-2">
+                  <div v-for="contract in msg.contracts" :key="String(contract.id)" class="rounded-lg border border-gray-200 bg-white p-3">
+                    <div class="flex items-start justify-between gap-3">
+                      <div>
+                        <div class="font-semibold text-[#1A1A1A]">{{ contract.contract_no }} · {{ contract.contract_name }}</div>
+                        <div class="mt-1 text-gray-500">{{ contract.customer_name || '—' }} · 签订日期 {{ cellText(contract.sign_date) || '—' }}</div>
+                      </div>
+                      <div class="text-right shrink-0"><div class="font-semibold text-[#049667]">{{ formatAmount(contract.amount) }}</div><span class="tag" :class="Number(contract.has_ai_keyword) === 1 ? 'tag-green' : 'tag-gray'">{{ Number(contract.has_ai_keyword) === 1 ? 'AI' : '—' }}</span></div>
+                    </div>
+                    <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
+                      <span v-for="module in moduleAiFlags(contract)" :key="module.name" class="tag" :class="module.hit ? 'tag-green' : 'tag-gray'">{{ module.name }}：{{ module.hit ? 'AI' : '—' }}</span>
+                    </div>
+                    <details class="mt-2 text-gray-600"><summary class="cursor-pointer text-[#049667]">查看完整合同台账</summary>
+                      <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
+                        <template v-for="field in contractFields" :key="field"><span class="text-gray-400">{{ columnLabel(field) }}</span><span class="break-all">{{ cellText(contract[field]) || '—' }}</span></template>
+                      </div>
+                    </details>
+                  </div>
+                  <div v-if="msg.summary" class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">{{ msg.summary.scope }}：共 {{ msg.summary.contract_count }} 份合同；合同金额合计 {{ formatAmount(msg.summary.total_amount) }}；{{ msg.summary.missing_amount_count }} 份未填写合同金额，未计入合计。</div>
+                  <div class="flex gap-2"><el-button size="small" @click="handleExportResult(msg)"><el-icon class="mr-1"><Download /></el-icon>导出合同台账</el-button></div>
+                </div>
 
                 <!-- 结构化结果表格（列名随 SQL 动态变化） -->
                 <div v-if="msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
@@ -117,7 +143,7 @@
                 </div>
 
                 <!-- SQL 折叠块 -->
-                <details v-if="msg.sql" class="mt-3 rounded-lg border border-gray-200 bg-gray-50 overflow-hidden">
+                <details v-if="msg.sql" class="hidden">
                   <summary class="px-3 py-2 text-xs font-medium text-gray-600 cursor-pointer select-none hover:text-[#049667]">查看 SQL</summary>
                   <pre class="px-3 pb-3 overflow-x-auto text-[11px] font-mono text-gray-700 whitespace-pre-wrap"><code>{{ msg.sql }}</code></pre>
                 </details>
@@ -193,9 +219,9 @@
           </button>
           <button
             class="px-2.5 py-1 bg-gray-50 hover:bg-emerald-50 hover:text-[#049667] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
-            @click="fillQuery('含AI关键词的订单有哪些')"
+            @click="fillQuery('含AI关键词的合同有哪些，总金额是多少')"
           >
-            📦 AI订单检索
+            📦 AI合同总金额
           </button>
         </div>
       </div>
@@ -208,7 +234,7 @@ import { ref, nextTick, onMounted } from 'vue';
 import { Plus, ChatDotSquare, Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { agentApi, type Citation, type TableRowItem } from '../api/agentApi';
-import { buildFaithfulWorkbook, downloadWorkbook, type ExportRow } from '../utils/excelExporter';
+import { exportFullContractLedgerExcel } from '../utils/excelExporter';
 import { renderAssistantContent } from '../utils/markdown';
 
 interface MessageItem {
@@ -217,6 +243,9 @@ interface MessageItem {
   tableData?: TableRowItem[];
   sql?: string;
   citations?: Citation[];
+  contracts?: Record<string, any>[];
+  summary?: { scope: string; contract_count: number; total_amount: number; missing_amount_count: number };
+  process?: Array<{ label: string; status: string }>;
   isExpanded?: boolean;
 }
 
@@ -256,6 +285,14 @@ const COLUMN_LABELS: Record<string, string> = {
   project_no: '项目号',
   project_name: '项目名称',
 };
+const contractFields = ['assessment_line', 'bid_no', 'related_main_no', 'framework_alias', 'customer_contract_no', 'signing_entity', 'contract_type', 'start_date', 'end_date', 'amount_type', 'tax_rate', 'settlement_terms', 'post_eval', 'deposit_amount', 'deposit_refund', 'arbitration', 'authorizer', 'status'];
+function formatAmount(v: unknown): string { const n = Number(v); return Number.isFinite(n) ? `${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元` : '金额未填写'; }
+function moduleAiFlags(contract: Record<string, any>) {
+  const hits = Array.isArray(contract.module_hits) ? contract.module_hits : [];
+  return [
+    ['项目名称', 'role'], ['服务内容', 'service'], ['技术要求', 'tech'], ['人员需求', 'staff'],
+  ].map(([name, key]) => ({ name, hit: Number(hits.find((item: any) => item.module_key === key)?.hit) === 1 }));
+}
 
 /** 取表格列（行里有哪些键就展示哪些列，排除 isSummary 标记）。 */
 function tableColumns(rows: TableRowItem[]): string[] {
@@ -292,16 +329,10 @@ const WELCOME = `您好，我是**综合检索智能体**。您可以问我关�
 
 - "服务内容包含AI的合同有多少，提供编号和总金额"
 - "2026年签订的运维合同有哪些"
-- "含AI关键词的订单总金额是多少"`;
+- "含AI关键词的合同总金额是多少"`;
 
-const historyList = ref([
-  { title: '服务内容包含AI智能体的合同', time: '2026-08-06 14:32', type: 'contract' },
-  { title: '含AI关键词的订单有哪些', time: '2026-08-06 11:20', type: 'order' },
-  { title: '2026年签订的运维合同有哪些', time: '2026-08-06 10:15', type: 'contract' },
-  { title: '电力行业含AI关键词的合同金额', time: '2026-08-05 16:48', type: 'contract' },
-  { title: '技术要求含机器学习的合同', time: '2026-08-05 09:22', type: 'contract' },
-  { title: '数据标注相关合同及对应金额', time: '2026-08-04 14:05', type: 'contract' },
-]);
+const historyList = ref<any[]>([]);
+const sessionId = ref<string | undefined>();
 
 const activeHistoryIndex = ref(0);
 const inputQuery = ref('');
@@ -314,7 +345,10 @@ const messages = ref<MessageItem[]>([
 
 onMounted(() => {
   scrollToBottom();
+  loadSessions();
 });
+
+async function loadSessions() { const res = await agentApi.getSessions(); if (res.code === 200) historyList.value = res.data.list || []; }
 
 function scrollToBottom() {
   nextTick(() => {
@@ -326,17 +360,20 @@ function scrollToBottom() {
 
 function handleNewChat() {
   activeHistoryIndex.value = -1;
+  sessionId.value = undefined;
   messages.value = [{ role: 'assistant', content: WELCOME }];
 }
 
 /** 点击历史条目：填入标题作为新提问重新检索（真实链路，不再注入假数据）。 */
-function selectHistory(index: number) {
+async function selectHistory(index: number) {
   activeHistoryIndex.value = index;
   const item = historyList.value[index];
-  if (item) {
-    inputQuery.value = item.title;
-    handleSend();
-  }
+  if (!item) return;
+  const res = await agentApi.getSession(item.id);
+  if (res.code !== 200) return ElMessage.error(res.msg || '读取会话失败');
+  sessionId.value = item.id;
+  messages.value = [{ role: 'assistant', content: WELCOME }, ...(res.data.messages || []).map((m: any) => ({ role: m.role, content: m.content, ...(m.result_data || {}) }))];
+  scrollToBottom();
 }
 
 function fillQuery(text: string) {
@@ -354,17 +391,18 @@ async function handleSend() {
 
   sending.value = true;
   try {
-    // history 只发本轮之前的对话（不含刚 push 的当前提问）。
-    const history = messages.value.slice(0, -1).map((m) => ({ role: m.role, content: m.content }));
-    const res = await agentApi.chat({ message: query, history });
+    const res = await agentApi.chat({ message: query, sessionId: sessionId.value });
     if (res.code === 200 && res.data) {
       messages.value.push({
         role: 'assistant',
         content: res.data.content || '',
-        tableData: res.data.tableData,
-        sql: res.data.sql,
+        contracts: res.data.contracts,
+        summary: res.data.summary,
+        process: res.data.process,
         citations: res.data.citations,
       });
+      sessionId.value = res.data.sessionId;
+      loadSessions();
     } else {
       messages.value.push({ role: 'assistant', content: res.msg || '查询失败，请稍后重试' });
     }
@@ -376,36 +414,24 @@ async function handleSend() {
   }
 }
 
-function handleClearChat() {
+async function handleClearChat() {
   messages.value = [];
+  await agentApi.clearSessions();
+  historyList.value = [];
+  sessionId.value = undefined;
   ElMessage.success('对话记录已清空');
 }
 
-// 忠实导出检索结果：列无关、不补默认值、不跨口径合计（ADR-0005 / 12b / 12c）。
 async function handleExportResult(msg: MessageItem) {
-  const list = msg.tableData;
+  const list = msg.contracts;
   if (!list || list.length === 0) {
     ElMessage.warning('无可导出的结果');
     return;
   }
 
-  const cols = tableColumns(list);
-  const rows: ExportRow[] = list.map((item) => {
-    const row: ExportRow = {};
-    for (const c of cols) {
-      const v = item[c];
-      if (v === null || v === undefined) row[columnLabel(c)] = null;
-      else if (typeof v === 'object') row[columnLabel(c)] = JSON.stringify(v);
-      else row[columnLabel(c)] = v as string | number | boolean;
-    }
-    if (item.isSummary) row.isSummary = true;
-    return row;
-  });
-
   try {
-    const wb = buildFaithfulWorkbook(rows);
-    await downloadWorkbook(wb, '检索结果明细');
-    ElMessage.success(`检索结果明细 Excel 已导出（共 ${rows.length} 条）`);
+    await exportFullContractLedgerExcel(list, '综合检索合同台账');
+    ElMessage.success(`合同台账 Excel 已导出（共 ${list.length} 条）`);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     ElMessage.error(`导出失败:${reason}`);

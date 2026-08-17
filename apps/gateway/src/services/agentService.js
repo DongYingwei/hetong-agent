@@ -9,7 +9,7 @@ import { config } from '../config/index.js';
  * 契约：POST {COREMIND_URL} { message, history } → { content, tableData?, sql?, citations? }。
  * COREMIND_URL 未配置时返回失败（由路由转成 {code:503}），不回退到裸 LLM。
  */
-export async function chat(message, history = []) {
+export async function chat(message, history = [], harness) {
   const url = config.coremind.url;
   if (!url) {
     return { success: false, error: 'CoreMind 服务未配置（COREMIND_URL 缺失），无法处理查询', code: 503 };
@@ -21,7 +21,7 @@ export async function chat(message, history = []) {
     const resp = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, history }),
+      body: JSON.stringify({ message, history, harness }),
       signal: controller.signal,
     });
     clearTimeout(timer);

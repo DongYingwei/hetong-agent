@@ -242,36 +242,41 @@ export async function exportFullContractLedgerExcel(dataList: ExportContractRow[
   }
 
   dataList.forEach((item, idx) => {
+    // 四模块是台账 AI 判断列，不导出合同分段原文。
+    const moduleAiFlag = (key: string) => {
+      const hit = Array.isArray(item.module_hits) ? item.module_hits.find((x: any) => x.module_key === key) : undefined;
+      return Number(hit?.hit) === 1 ? 'AI' : '—';
+    };
     const rowValues = [
       '样本',
       item.contract_no || item.no || '—',
       item.customer_name || item.customerName || '—',
       item.contract_name || item.name || '—',
-      item.assessment_line || '信息技术',
+      item.assessment_line || '—',
       item.bid_no || '—',
-      item.main_contract_no || '—',
-      item.framework_short_name || '—',
+      item.related_main_no || item.main_contract_no || '—',
+      item.framework_alias || item.framework_short_name || '—',
       item.customer_contract_no || '—',
-      item.signing_entity || '南京华苏科技有限公司',
-      item.contract_type || '框架协议',
-      item.sign_date || '2026-06-15',
-      item.start_date || '2026-06-15',
-      item.end_date || '2027-06-15',
-      item.amount_attr || '含税',
-      item.amount || '0',
-      item.tax_rate || '6%',
-      item.settlement_terms || '按月结算',
-      item.has_post_assessment || '否',
-      item.deposit_amount || '0',
-      item.deposit_refund_condition || '无',
-      item.arbitration_mode || '对方所在地法院',
-      item.authorizer || '张三',
-      item.contract_status || '已签约',
-      item.warning_status || '正常',
-      item.service_content || '—',
-      item.tech_requirements || '—',
-      item.job_description || '—',
-      item.personnel_requirements || '—'
+      item.signing_entity || '—',
+      item.contract_type || '—',
+      item.sign_date || '—',
+      item.start_date || '—',
+      item.end_date || '—',
+      item.amount_type || item.amount_attr || '—',
+      item.amount ?? '—',
+      item.tax_rate || '—',
+      item.settlement_terms || '—',
+      item.post_eval || item.has_post_assessment || '—',
+      item.deposit_amount ?? '—',
+      item.deposit_refund || item.deposit_refund_condition || '—',
+      item.arbitration || item.arbitration_mode || '—',
+      item.authorizer || '—',
+      item.status || item.contract_status || '—',
+      item.expiry_warning || item.warning_status || '—',
+      moduleAiFlag('service'),
+      moduleAiFlag('tech'),
+      moduleAiFlag('role'),
+      moduleAiFlag('staff')
     ];
 
     const dataRow = ws.addRow(rowValues);
@@ -380,10 +385,11 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
     { title: '最新附件上传时间', width: 20 },
     { title: '附件数量', width: 12 }, // Yellow
     { title: '含eml附件', width: 12 }, // Yellow
+    // 与 v1.3 订单台账列表完全一致：项目名称、服务内容、技术要求、人员要求。
+    { title: '项目名称', width: 20 }, // Yellow AI
     { title: '服务内容', width: 20 }, // Yellow AI
     { title: '技术要求', width: 20 }, // Yellow AI
-    { title: '岗位说明', width: 20 }, // Yellow AI
-    { title: '人员需求', width: 20 }, // Yellow AI
+    { title: '人员要求', width: 20 }, // Yellow AI
   ];
 
   // 列宽设置
@@ -495,6 +501,8 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
 
   // 4. 填充数据行 (Row 4 onwards)
   dataList.forEach((item) => {
+    const orderModuleHit = (key: string) => Array.isArray((item as any).module_hits)
+      && (item as any).module_hits.some((x: any) => x.module_key === key && x.hit === 1) ? 'AI' : '—';
     const rowVal = [
       '样本',
       item.project_no || '—',
@@ -563,10 +571,10 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
       item.latest_attachment_time || '2026-07-23 14:56:03',
       item.attachment_count ?? 3,
       item.has_eml || '是',
-      item.service_content || '—',
-      item.tech_requirements || '—',
-      item.job_description || '—',
-      item.personnel_requirements || '—',
+      item.job_description || orderModuleHit('role'),
+      item.service_content || orderModuleHit('service'),
+      item.tech_requirements || orderModuleHit('tech'),
+      item.personnel_requirements || orderModuleHit('staff'),
     ];
 
     const dataRow = ws.addRow(rowVal);

@@ -86,7 +86,7 @@ async function readJsonBody(req: http.IncomingMessage): Promise<unknown> {
 
 /** POST /chat：执行一轮查询，映射为富格式返回。 */
 async function handleChat(body: unknown): Promise<{ status: number; json: unknown }> {
-  const { message, history } = (body ?? {}) as { message?: unknown; history?: unknown };
+  const { message, history, harness } = (body ?? {}) as { message?: unknown; history?: unknown; harness?: unknown };
 
   if (typeof message !== "string" || message.trim() === "") {
     return { status: 400, json: { error: "message 不能为空" } };
@@ -102,7 +102,7 @@ async function handleChat(body: unknown): Promise<{ status: number; json: unknow
   try {
     const run = await runtime.runAgentTurn(
       agentName,
-      message,
+      `${typeof harness === "string" ? `[Harness 约束] ${harness}\n` : ""}${message}`,
       toCoreMindMessages(history),
       (event) => events.push(event),
     );

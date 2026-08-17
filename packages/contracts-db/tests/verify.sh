@@ -24,6 +24,8 @@ psql_c() { docker exec -i "$CID" psql -v ON_ERROR_STOP=1 -U postgres -d contract
 echo "▶ 应用 migration（跑两次证明幂等）…"
 psql_c < "$HERE/migrations/001_contracts.sql"
 psql_c < "$HERE/migrations/001_contracts.sql"   # 第二次：幂等
+psql_c < "$HERE/migrations/004_configurable_keyword_hits.sql"
+psql_c < "$HERE/migrations/004_configurable_keyword_hits.sql" # 第二次：幂等
 echo "▶ 应用 seeds（跑两次证明幂等）…"
 psql_c < "$HERE/seeds/001_dict.sql"
 psql_c < "$HERE/seeds/001_dict.sql"
@@ -138,6 +140,16 @@ if psql_c -c "INSERT INTO contract_module_hits (contract_id,module_key,hit) VALU
 else
   echo "  ✓ (contract_id,module_key) 唯一约束生效"
 fi
+
+echo "▶ 断言 12：关键词配置与合同命中明细"
+KWT=$(psql_c -tAc "SELECT to_regclass('ai_keywords') IS NOT NULL AND to_regclass('ai_keyword_terms') IS NOT NULL AND to_regclass('contract_keyword_hits') IS NOT NULL AND to_regclass('contract_keyword_overrides') IS NOT NULL")
+assert_eq "关键词配置与命中表存在" "t" "$KWT"
+AIID=$(psql_c -tAc "SELECT id FROM ai_keywords WHERE name='AI'")
+KHC=$(psql_c -tAc "SELECT count(*) FROM ai_keyword_terms WHERE keyword_id=$AIID AND term='大模型'")
+assert_eq "AI 子词可配置" "1" "$KHC"
+psql_c -c "INSERT INTO contract_keyword_hits(contract_id,module_key,keyword_id,matched_term,paragraph_no,paragraph_text) VALUES ($ROWID,'service',$AIID,'大模型',1,'提供大模型服务')" >/dev/null
+KH=$(psql_c -tAc "SELECT count(*) FROM contract_keyword_hits WHERE contract_id=$ROWID AND matched_term='大模型'")
+assert_eq "命中保留子词与原文段落" "1" "$KH"
 
 echo
 if [ "$fail" = "0" ]; then echo "✅ T01 全部断言通过（migration 幂等 + 台账字段 + 物化列 + 约束 + 五表 + 6 类字典/模块 + 配置驱动模块）"; else echo "❌ 存在失败断言"; fi

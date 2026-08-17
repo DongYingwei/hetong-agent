@@ -3,7 +3,7 @@
 > 三层规划文档之一。**任务层**回答"具体做什么"。
 > 关联：[需求 requirements.md](./requirements.md) · [分期计划 roadmap.md](./roadmap.md)
 > 主骨 = 现有 11 份工单 T01–T11（`.scratch/jinguan-retrieval/issues/`，含九维度验收）；补本轮新发现的缺口任务 G-*。
-> 最后更新：2026-08-13。
+> 最后更新：2026-08-14。
 
 **状态图例**：✅ 完成 · 🟢 构建完成待端到端 · ⏳ 未做 · 🔴 阻塞
 
@@ -83,7 +83,7 @@
 - **契约**：消费 [C-CHAT](#契约锚点表)
 
 ### T11 — 前端 AgentSearch 接真实数据 {#t11}
-- **层**：① 前端 · **状态**：⏳ ready-for-agent
+- **层**：① 前端 · **状态**：✅（真实 Agent 回答、动态表格、SQL/出处 UI 已接通）
 - **做什么**：MessageItem 扩 `{content,tableData?,sql?,citations?}`；对接网关 `/api/agent/chat`；SQL 折叠块 + RAG 出处 UI；删 mock。
 - **依赖↑**：T10 + [G3](#g3)(/chat wrapper 才有真实端点) · **影响↓**：验收 V2/V3
 - **契约**：消费 [C-CHAT](#契约锚点表)
@@ -99,13 +99,14 @@
 - **契约**：落地 [C-READONLY](#契约锚点表) 第③道防线
 
 ### G2 — 真实合同数据入库 {#g2}
-- **层**：⑤ 解析 · **状态**：🟢 单份跳通（QC-2026015：PG 1 合同 + Milvus 248 向量，已 flush）
-- **做什么**：`scripts/ingest_real.py` 串 parse→confirm→vectorize；接台账词表；跑真 PDF 入库。
+- **层**：⑤ 解析 · **状态**：🟡 审核台账测试批次已入 SQL（59 条）；RAG 仍未打通
+- **做什么**：`scripts/ingest_real.py` 串 parse→confirm→vectorize；接台账词表；跑真 PDF 入库。2026-08-14 另以 `scripts/import_test_ledger.py` 导入「合同台账-V2.xlsx」59 条作临时 SQL 测试；批次 `test-ledger-v2-import-20260814` 可用同脚本 `--purge` 清理，因无原文不建向量。
+- **已补解析缓存工具**：`scripts/batch_pdf_to_markdown.py <pdf目录>` 递归调用 MinerU，将 Markdown 与 `md-pdf/manifest.json` 写在本地；映射以 PDF SHA-256 为键，新上传同内容文件可用 `--lookup <pdf> --output-dir <md-pdf目录>` 直接命中，避免重复解析。后续上传 API 接入此缓存即可复用原文。
 - **依赖↑**：T04 + G1(库) + C-TAXONOMY(词表) · **影响↓**：T09（无数据 eval 查空）
 - **契约**：定义 [C-TAXONOMY](#契约锚点表) · **遗留**：模块切段太窄致模块命中恒 0（归 [G4](#g4)）；批量剩 6 份未导
 
 ### G3 — CoreMind /chat HTTP wrapper {#g3}
-- **层**：③ 查询 · **状态**：⏳ 未做
+- **层**：③ 查询 · **状态**：✅（`GET /health`、`POST /chat` 已由网关和前端实连）
 - **做什么**：用 `CoreMindRuntime`+`ChatSession` 包一个 HTTP `/chat` 端点，供网关 `COREMIND_URL` 指向。**同时升级 vendor 到 0.3.0-rc.2**（最小闭包 4 包，见 [升级评估](../../handoff.md#五点五)）。
 - **依赖↑**：T08 · **影响↓**：T11（前端联调前置）
 - **契约**：定义 [C-CHAT](#契约锚点表)
@@ -119,6 +120,12 @@
 - **层**：③ 查询 · **状态**：🔴 1 集成测试回归
 - **做什么**：`vector_search.integration.test.ts` 的"智能巡检"强断言在 8B 下排序变化（expected 101 得 202）。判断是测试预期需随 8B 调，还是 8B 排序异常，据实修正。
 - **依赖↑**：reranker 升 8B（已提交） · **影响↓**：T07 集成绿
+
+### G6 — 订单真实数据源与设计稿功能接入 {#g6}
+- **层**：② 网关 + ① 前端 · **状态**：🔴 等待真实数据源/表结构确认
+- **做什么**：确认订单的表、上游 API 或同步策略及写权限后，替换现有 mock：真实列表/详情、`name_mismatch` 计算、AI 模块映射、设计稿中的订单编辑并持久化。
+- **验收**：订单页每条数据可追溯到真实来源；名称不符有明确来源字段；编辑刷新后仍存在；没有真实源时不得展示“已保存”的假成功。
+- **依赖↑**：订单数据提供方给出 schema/API 与写入授权 · **影响↓**：订单台账、订单详情、含 AI 订单查询。
 
 ---
 

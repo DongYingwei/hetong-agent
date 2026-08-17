@@ -1,7 +1,7 @@
 # 经小管合同智能体 · 交接文档
 
 > 写给一个**完全没有上下文的新会话**。读完这份 + `README.md`（有分层图+目录树）就能接着干。
-> 最后更新：2026-08-13 · **全部改动未提交**（`git status` 有一大堆未提交/未跟踪文件，详见文末）。
+> 最后更新：2026-08-14 · 本轮有未提交的超时配置、合同模块真实数据接口/前端对齐、测试台账导入脚本与计划文档改动；历史主骨改动已在此前提交。
 
 ---
 
@@ -78,6 +78,14 @@ PG(`hetong-contracts-db`, 5433) 和 Milvus(`milvus-standalone`, 19530) 是 Docke
 - `apps/query-agent` vitest → 28 passed（但含 1 个**实时数据 flaky**：`vector_search.integration.test.ts` 期望 contract_id 101 现在返回 202，与代码无关）。
 - `apps/web` vitest → 9 passed（faithfulExport 5 + markdown 4）。
 
+### D. 2026-08-14：审核台账测试数据与设计稿对齐
+- **审核台账已临时入查询库**：`demo/合同台账-V2.xlsx` 的「合同台账」59 条已用 `apps/parse-service/scripts/import_test_ledger.py` 写入 `contracts`，均标记为 `confirmed=1`，批次标识为 `test-ledger-v2-import-20260814`。仅用于 SQL/台账测试；Excel 没有合同原文，故**未生成 Milvus 向量，不能验证 RAG**。
+  - 测试完成后的精确清理命令：`cd apps/parse-service && python3 scripts/import_test_ledger.py --purge`。该命令只删除上述批次及其级联明细，不碰其他合同。
+- **PDF Markdown 缓存工具已补齐**：`apps/parse-service/scripts/batch_pdf_to_markdown.py <PDF目录>` 递归转换到默认的 `<PDF目录>/md-pdf/`，并写入 `manifest.json`。映射键为 PDF SHA-256，故重命名/新上传的同内容 PDF 可用 `--lookup` 命中既有 Markdown；目前仅是本地工具，上传 API 尚未自动读取该缓存。
+- **60 秒超时先以完成为目标放宽**：CoreMind runtime 110 秒、网关 120 秒、前端 125 秒。直接 SQL 很快；超时来自 Agent 一次请求可能经历两轮模型生成，后续需独立做时延/模型路由优化。
+- **合同台账按设计稿完成真数据对齐**：网关新增 `GET /api/contract/modules`；合同列表/详情返回真实 `contract_module_hits`；前端模块筛选和列按数据库启用模块动态生成；合同详情字段已改用实际 schema（签约主体、金额类型、结算条款等）；主布局使用设计稿头像资产。
+- **订单仅完成安全的展示对齐**：名称不符标记会在后端真实返回 `name_mismatch` 时展示。运营库当前不存在 `sys_order`，订单接口仍是 mock，未实现会伪持久化的编辑功能；真实订单数据源确定后再接入。
+
 ---
 
 ## 四、当前卡在哪（按严重度排序）
@@ -86,7 +94,8 @@ PG(`hetong-contracts-db`, 5433) 和 Milvus(`milvus-standalone`, 19530) 是 Docke
 `Milvus contract_chunks` 集合 **0 个向量**（已用 `query(expr='contract_id>=0')` 确认，不是 stats 缓存问题）。原因：已入库的 QC-2026015 **没建向量**。
 - `confirm` 端点建向量是有条件的（`api.py:106`：`if row[1] and embedder is not None and store is not None`），`build_default_app` 虽配了 embedder/store，但**这份合同确认时向量没进去**（根因未查清：可能是当时服务没配好/建向量失败/或走了 `ingest_real.py` 后又被删）。
 - 症状：问"结算条款怎么写的"这类语义问题，`vector_search` 召回恒空。embed/rerank/Milvus 服务本身都活着（8008/8012/19530 都 200），是**数据没灌进去**。
-- 验证：重新确认一份合同，看 `/confirm` 返回的 `vectorized` 是不是 `true` 且 `chunks > 0`。
+- 审核台账的 59 条临时数据只能验证结构化 SQL，不能替代本项；必须取得至少一份有原文的 PDF/Markdown 后经 `/confirm` 入库。
+- 验证：重新确认一份含原文的合同，看 `/confirm` 返回的 `vectorized` 是不是 `true` 且 `chunks > 0`。
 
 ### 🟠 2. 字段抽取质量（遗留 B，未修）
 QC-2026015 抽取出客户名/合同名/税率/结算条款✅，但**金额/金额类型/签订日期/起止日期全空**、**模块命中全 0**。
@@ -100,16 +109,17 @@ Agent 侧只有提示词"分组分行"，**无结构化 `isSummary` 标记**（�
 `evals/scenarios.yaml` 11 场景 schema 校验过，但端到端跑真对话还需 **G4 数值真值标注集**（人工核对已知答案）。G1（PG 只读角色）和 DEEPSEEK_API_KEY 其实**已在 .env 且实测通**，只剩 G4。
 
 ### 🟡 5. 订单侧基本是原型假数据
-「含AI订单」等查询无真实数据源，订单台账/订单详情仍是原型假值。
+「含AI订单」等查询无真实数据源，运营库也无 `sys_order` 表；订单台账/详情仍是原型假值。名称不符 UI 已预留给真实接口的 `name_mismatch` 字段，但编辑/保存必须等真实表、接口或上游服务确定。
 
 ---
 
 ## 五、下一步计划（按优先级）
 
-1. **查清 confirm 为什么没建向量，把 RAG 打通**（最硬断点）：重新确认一份合同，抓 `/confirm` 的 `vectorized`/`chunks` 值；若 0，查 `vectorize_confirmed_contract` 的切片与 embedding 环节（看解析服务日志）。
-2. **修字段抽取质量 B**：金额/日期空 + 模块命中 0（需要具体 PDF 的 MinerU 输出 + 抽取结果来定位）。
-3. **12d**：让 sql_query/Agent 结构化产出 `isSummary` 标记 + 定金额类型（number 带口径）。
-4. **T09 eval gate**：等 G4 真值标注集。
+1. **用一份含原文的合同打通 RAG**（最硬断点）：重新确认，抓 `/confirm` 的 `vectorized`/`chunks`；若为 0，查 `vectorize_confirmed_contract` 与解析服务日志。审核 Excel 测试批次不适用。
+2. **先验证非 RAG 的结构化检索**：针对导入的 59 条审核台账，验证列表、模块过滤、Agent SQL 返回和导出；完成后执行测试批次 purge。批量 PDF 到 Markdown 后，上传 API 可继续接入本地 SHA-256 缓存以避免重复调用 MinerU。
+3. **G6 订单真实数据源接入**：先确认订单表/上游 API、字段映射和写权限；再实现真实列表/详情、名称不符判断、模块映射及可持久化编辑。
+4. **时延优化**：将当前 110/120/125 秒兜底改为可观测的分段耗时，减少不必要的模型轮次或切换更快模型。
+5. **12d / T09 / G4**：结构化 `isSummary` + 数值类型、模块切段与真值集、端到端 eval。
 
 ---
 
@@ -138,6 +148,8 @@ Agent 侧只有提示词"分组分行"，**无结构化 `isSummary` 标记**（�
 18. **前端历史回放 assistant content 必须数组形式**——`toCoreMindMessages` 要把字符串 content 转 `[{type:'text',text}]`，否则 pi-agent-core 静默丢弃 → 空轮（实测踩过）。
 19. **agentApi.chat 是单参对象**——`chat({ message, history })`，别写成两参（原 bug：body 成了裸字符串，网关 400）。history 只发本轮之前的对话。
 20. **RAG 无数据先查 Milvus 向量数**——别只看 contracts 表有记录就以为 RAG 通。用 `Collection.query(expr='contract_id>=0')` 计数（`num_entities`/`get_collection_stats` 不可靠）。
+21. **审核 Excel 台账不是 RAG 数据**——它没有合同原文；`import_test_ledger.py` 的 59 条仅供 SQL/台账测试，清理只能用带批次标记的 `--purge`，不要手工按合同号批量删。
+22. **订单 mock 不能冒充真实能力**——没有 `sys_order`/上游数据源时，不要接“保存成功”的编辑接口；先落真实数据契约。
 
 ---
 
@@ -164,5 +176,5 @@ Agent 侧只有提示词"分组分行"，**无结构化 `isSummary` 标记**（�
 
 ## 附：git 状态与推送
 
-- **本轮全部改动未提交**：`apps/query-agent`（wrapper 3 文件 + 依赖）、`apps/web`（AgentSearchView/agentApi/markdown/ImportContractModal/VerifyView + 依赖）、`apps/parse-service/api.py`、`apps/gateway/.env`、`handoff.md`、`.gitignore` 等。
+- **当前待提交（2026-08-14）**：`apps/query-agent/coremind.yaml`（运行时超时）、`apps/gateway/src/{config/index.js,routes/contract.js}`（超时与真实模块接口）、`apps/web`（合同模块 UI、详情字段、设计头像、订单名称不符展示、请求超时）、`apps/parse-service/scripts/import_test_ledger.py`（测试批次导入/清理）、`scripts/batch_pdf_to_markdown.py` 与 `pdf_markdown_cache.py`（PDF→Markdown SHA-256 缓存）、本交接与 `docs/plan/`。
 - 已提交未推送的（历史）：T07/T08/T10 等，`领先 origin N 个 commit`。**推送需用户在本地终端 `git push origin master`**（内网 GitLab 需认证，非交互环境弹不出密码框，别绕过）。

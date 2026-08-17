@@ -2,13 +2,9 @@
   <div class="flex h-screen w-screen overflow-hidden bg-gray-100">
     <!-- 侧边栏 (1:1 还原 demo3.html 菜单结构与样式) -->
     <aside class="fixed left-3 top-3 bottom-3 w-[240px] bg-[#1C1C1C] flex flex-col z-50 overflow-hidden" style="border-radius: 21px;">
-      <!-- Logo -->
+      <!-- 设计稿头像 -->
       <div class="flex items-center gap-2.5 px-[26px] pt-6 pb-3 border-b border-white/5">
-        <div class="w-8 h-8 rounded-lg bg-[#049667] flex items-center justify-center shrink-0">
-          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-          </svg>
-        </div>
+        <img :src="designerAvatar" alt="经小管智能体" class="w-8 h-8 rounded-lg object-cover shrink-0" />
         <div class="flex-1 min-w-0">
           <span class="text-white text-base font-semibold block truncate">经小管智能体</span>
         </div>
@@ -181,6 +177,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
+import designerAvatar from '../assets/designerAvatar';
 import { useRoute, useRouter } from 'vue-router';
 import {
   Setting,
