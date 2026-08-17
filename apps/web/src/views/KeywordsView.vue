@@ -8,7 +8,7 @@
           <p class="text-xs text-gray-500 mt-1">管理命中关键词类别，当合同或订单中出现该类别下的词或语义时，即认定为命中该关键词</p>
         </div>
         <div class="flex gap-2">
-        <el-button v-if="isAdmin" @click="showRescanModal = true">
+        <el-button v-if="isAdmin" size="large" @click="showRescanModal = true">
           重新扫描关键词
         </el-button>
         <el-button
