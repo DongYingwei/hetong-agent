@@ -7,12 +7,7 @@
           <h1 class="text-2xl font-bold text-[#1A1A1A]">订单台账</h1>
           <p class="text-xs text-gray-500 mt-1">智能体自动抓取的订单数据</p>
         </div>
-        <el-button
-          type="primary"
-          size="large"
-          style="background-color: #049667; border-color: #049667;"
-          @click="handleExport"
-        >
+        <el-button size="large" @click="handleExport">
           <el-icon class="mr-1"><Download /></el-icon> 导出Excel
         </el-button>
       </div>
@@ -70,7 +65,7 @@
         <el-table-column prop="project_no" label="项目编号" width="120">
           <template #default="{ row }">
             <div class="flex items-center gap-1.5 min-w-0">
-              <span class="text-[#049667] font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">{{ row.project_no }}</span>
+              <span class="font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">{{ row.project_no }}</span>
               <el-tooltip v-if="row.name_mismatch === 1 || row.name_mismatch === true" content="数据源标记：订单名称与实际内容不符" placement="top">
                 <span class="inline-flex text-[#DC2626] shrink-0" aria-label="订单名称不符">⚠</span>
               </el-tooltip>
@@ -82,7 +77,7 @@
 
         <el-table-column prop="order_no" label="订单编号" min-width="180">
           <template #default="{ row }">
-            <span class="text-[#049667] font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">
+            <span class="font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">
               {{ row.order_no }}
             </span>
           </template>
@@ -144,7 +139,7 @@
         <!-- 操作 (固定右侧) -->
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" style="color: #049667;" @click="handleOpenDetail(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="handleOpenDetail(row)">
               详情
             </el-button>
           </template>

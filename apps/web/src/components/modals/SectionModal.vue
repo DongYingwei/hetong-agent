@@ -2,15 +2,24 @@
   <el-dialog
     v-model="visible"
     :title="isEdit ? '编辑模块' : '新增模块'"
-    width="480px"
+    width="520px"
     destroy-on-close
+    class="section-modal"
   >
     <el-form :model="form" :rules="rules" ref="formRef" label-position="top">
       <el-form-item label="模块名称" prop="sectionTitle" required>
-        <el-input v-model="form.sectionTitle" placeholder="请输入模块名称" />
+        <el-input v-model="form.sectionTitle" placeholder="请输入模块名称" size="large" />
       </el-form-item>
 
-      <el-form-item label="对应合同内模块名称" prop="subNamesList" required>
+      <el-form-item label="适配范围" prop="scope" required>
+        <el-radio-group v-model="form.scope" class="scope-radio-group">
+          <el-radio value="contract">仅合同</el-radio>
+          <el-radio value="order">仅订单</el-radio>
+          <el-radio value="all">合同+订单</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
+      <el-form-item label="对应模块名称" prop="subNamesList" required>
         <div class="border border-gray-300 rounded-lg p-2.5 min-h-[44px] flex flex-wrap gap-2 items-center bg-white w-full">
           <span
             v-for="(tag, idx) in form.subNamesList"
@@ -25,7 +34,7 @@
           <input
             v-model="inputTagText"
             class="border-none outline-none flex-1 min-w-[120px] text-xs text-gray-700 bg-transparent"
-            placeholder="输入内容项后按回车键添加"
+            placeholder="输入内容项后回车添加"
             @keydown.enter.prevent="handleAddTag"
           />
         </div>
@@ -36,18 +45,11 @@
         <el-input
           v-model="form.rulesDesc"
           type="textarea"
-          :rows="2"
+          :rows="3"
           placeholder="描述AI如何识别该模块，如按标题章节自动归类"
         />
       </el-form-item>
 
-      <el-form-item label="适配范围" required>
-        <el-radio-group v-model="form.scope">
-          <el-radio value="contract">仅合同</el-radio>
-          <el-radio value="order">仅订单</el-radio>
-          <el-radio value="all">合同+订单</el-radio>
-        </el-radio-group>
-      </el-form-item>
     </el-form>
 
     <template #footer>
@@ -97,6 +99,7 @@ const form = reactive({
 
 const rules: FormRules = {
   sectionTitle: [{ required: true, message: '请输入模块名称', trigger: 'blur' }],
+  scope: [{ required: true, message: '请选择适配范围', trigger: 'change' }],
   subNamesList: [{ type: 'array', required: true, message: '请至少添加一个对应合同内模块名称', trigger: 'change' }],
 };
 
@@ -173,3 +176,14 @@ async function handleSubmit() {
   });
 }
 </script>
+
+<style scoped>
+.scope-radio-group :deep(.el-radio__input.is-checked .el-radio__inner) {
+  background-color: #303133;
+  border-color: #303133;
+}
+.scope-radio-group :deep(.el-radio__input.is-checked + .el-radio__label) {
+  color: #303133;
+  font-weight: 500;
+}
+</style>

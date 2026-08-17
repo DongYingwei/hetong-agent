@@ -12,7 +12,7 @@
         </span>
 
         <span v-if="isReadOnly" class="tag tag-gray">只读模式</span>
-        <span v-else-if="isMultiMode" class="text-xs text-[#049667] font-semibold bg-[#E6F8F0] px-2 py-0.5 rounded-full">
+        <span v-else-if="isMultiMode" class="text-xs font-semibold bg-[#f3f4f6] px-2 py-0.5 rounded-full">
           {{ activeTabIndex + 1 }} / {{ fileTabs.length }}
         </span>
       </div>
@@ -21,8 +21,6 @@
         <el-button v-if="isReadOnly" @click="goBack">关闭</el-button>
         <el-button
           v-else
-          type="primary"
-          style="background-color: #049667; border-color: #049667;"
           @click="handleSaveCurrent"
         >
           保存已核对数据
@@ -37,11 +35,11 @@
         :key="index"
         class="flex items-center gap-2 px-4 py-2.5 text-xs font-medium cursor-pointer border-b-2 transition-colors select-none"
         :class="activeTabIndex === index
-          ? 'border-[#049667] text-[#049667] bg-white'
+          ? 'border-gray-300 text-[#303133] bg-white'
           : 'border-transparent text-gray-500 hover:text-gray-800'"
         @click="switchFileTab(index)"
       >
-        <span class="w-2 h-2 rounded-full" :class="tab.verified ? 'bg-[#049667]' : 'bg-orange-400'"></span>
+        <span class="w-2 h-2 rounded-full" :class="tab.verified ? 'bg-[#303133]' : 'bg-orange-400'"></span>
         <span>{{ tab.fileName }}</span>
       </div>
     </div>

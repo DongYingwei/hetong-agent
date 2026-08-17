@@ -1,8 +1,8 @@
 <template>
   <div v-loading="loading">
-    <div class="flex items-center justify-between mb-4"><div class="text-sm text-gray-500"><span class="cursor-pointer hover:text-[#049667]" @click="router.push('/ledger')">合同台账</span> / <span class="text-gray-800">合同详情</span></div><el-button @click="router.push('/ledger')"><el-icon class="mr-1"><Back /></el-icon>返回台账列表</el-button></div>
+    <div class="flex items-center justify-between mb-4"><div class="text-sm text-gray-500"><span class="cursor-pointer hover:text-gray-700" @click="router.push('/ledger')">合同台账</span> / <span class="text-gray-800">合同详情</span></div><el-button @click="router.push('/ledger')"><el-icon class="mr-1"><Back /></el-icon>返回台账列表</el-button></div>
     <template v-if="contract">
-      <div class="page-header-card mb-4 flex items-center justify-between"><div><h1 class="text-2xl font-bold text-[#1A1A1A]">{{ contract.contract_name || '—' }}</h1><p class="mt-2 text-xs text-gray-500">合同编号：<span class="font-mono text-gray-800">{{ contract.contract_no }}</span>　客户：{{ contract.customer_name || '—' }}</p></div><el-button type="primary" style="background:#049667;border-color:#049667" @click="goToVerify">{{ contract.verify_status === 1 ? '查看核对' : '去核对' }}</el-button></div>
+      <div class="page-header-card mb-4 flex items-center justify-between"><div><h1 class="text-2xl font-bold text-[#1A1A1A]">{{ contract.contract_name || '—' }}</h1><p class="mt-2 text-xs text-gray-500">合同编号：<span class="font-mono text-gray-800">{{ contract.contract_no }}</span>　客户：{{ contract.customer_name || '—' }}</p></div><el-button @click="goToVerify">{{ contract.verify_status === 1 ? '查看核对' : '去核对' }}</el-button></div>
       <div class="content-card p-5"><el-tabs v-model="tab">
         <el-tab-pane label="基本信息" name="basic"><InfoGrid :items="basic" /></el-tab-pane>
         <el-tab-pane label="合同-金额及结算" name="money"><InfoGrid :items="money" /></el-tab-pane>

@@ -5,10 +5,10 @@
       <div class="flex items-center justify-between">
         <div>
           <h1 class="text-2xl font-bold text-[#1A1A1A]">合同台账</h1>
-          <p class="text-xs text-gray-500 mt-1">管理系统全量合同数据，支持AI搜索与状态维度检索</p>
+          <p class="text-xs text-gray-500 mt-1">管理全部合同台账及AI识别结果</p>
         </div>
         <div class="flex gap-2">
-          <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" @click="showImportModal = true">
+          <el-button size="large" @click="showImportModal = true">
             <el-icon class="mr-1"><Upload /></el-icon> 导入合同
           </el-button>
         </div>
@@ -22,7 +22,7 @@
           v-model="filters.keyword"
           placeholder="搜索合同号、客户名称、合同名称"
           clearable
-          style="width: 240px"
+          style="width: 220px"
           @keyup.enter="loadData"
         >
           <template #prefix>
@@ -77,7 +77,7 @@
       <el-table :data="tableData" v-loading="loading" stripe style="width: 100%">
         <el-table-column prop="contract_no" label="合同号" width="150">
           <template #default="{ row }">
-            <span class="text-[#049667] font-medium cursor-pointer hover:underline" @click="goToDetail(row.id)">
+            <span class="font-medium cursor-pointer hover:underline font-mono" @click="goToDetail(row.id)">
               {{ row.contract_no }}
             </span>
           </template>
@@ -169,14 +169,14 @@
               type="primary"
               link
               size="small"
-              style="color: #049667;"
+              style="color: #1f1f1f;"
               @click="handleActionClick(row)"
             >
               {{ row.verify_status === 1 ? '查看' : '核对' }}
             </el-button>
 
             <el-dropdown trigger="click">
-              <span class="text-gray-400 cursor-pointer ml-2 text-xs">更多</span>
+              <span class="text-[#1f1f1f] cursor-pointer ml-2 text-xs">更多</span>
               <template #dropdown>
                 <el-dropdown-menu>
                   <!-- 未核对：更多只有【删除】 -->

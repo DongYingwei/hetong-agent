@@ -65,7 +65,7 @@
           <!-- AI 消息 -->
           <div v-else class="flex justify-start">
             <div class="flex items-start gap-2.5 max-w-[92%]">
-              <div class="w-8 h-8 rounded-full bg-[#049667] text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm">
+              <div class="w-8 h-8 rounded-full bg-[#303133] text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-sm">
                 AI
               </div>
               <div class="bg-white border border-gray-200 text-xs py-3 px-4 rounded-2xl rounded-tl-none leading-relaxed shadow-sm text-[#1A1A1A] min-w-0">
@@ -188,8 +188,6 @@
             </template>
           </el-input>
           <el-button
-            type="primary"
-            style="background-color: #049667; border-color: #049667;"
             :loading="sending"
             @click="handleSend"
           >
