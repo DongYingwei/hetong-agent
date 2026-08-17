@@ -45,8 +45,8 @@ router.post('/sub/remove', async (ctx) => {
   if (!body.keyword_id || !body.sub_word) return ctx.fail('参数不完整', 400);
   return forward(ctx, `/keyword-config/${body.keyword_id}/terms/${encodeURIComponent(body.sub_word)}`, { method: 'DELETE' });
 });
-router.post('/rescan', async (ctx) => forward(ctx, '/contracts/rescan-keywords', {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ctx.request.body || {}),
-}));
+// 重扫已升级为持久化后台任务（/api/keyword-rescan/jobs），不保留同步全量调用，
+// 防止非管理员绕过权限且浏览器请求超时后无法查看进度。
+router.post('/rescan', async (ctx) => ctx.fail('请使用关键词重扫后台任务接口', 410));
 
 export default router;

@@ -24,6 +24,8 @@ import homepageRoutes from './routes/homepage.js';
 import roleRoutes from './routes/role.js';
 import departmentRoutes from './routes/department.js';
 import orderRoutes from './routes/order.js';
+import keywordRescanRoutes from './routes/keywordRescan.js';
+import { resumeKeywordRescanJobs } from './services/keywordRescanService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -64,6 +66,7 @@ app.use(homepageRoutes.routes()).use(homepageRoutes.allowedMethods());
 app.use(roleRoutes.routes()).use(roleRoutes.allowedMethods());
 app.use(departmentRoutes.routes()).use(departmentRoutes.allowedMethods());
 app.use(orderRoutes.routes()).use(orderRoutes.allowedMethods());
+app.use(keywordRescanRoutes.routes()).use(keywordRescanRoutes.allowedMethods());
 
 // 5. 健康检查
 app.use(async (ctx, next) => {
@@ -85,3 +88,6 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`🔑 DEEPSEEK_API_KEY: ${config.deepseek.apiKey ? '✅ 已配置' : '❌ 未配置'}`);
   console.log(`🌐 DEEPSEEK_BASE_URL: ${config.deepseek.baseURL}`);
 });
+
+// 持久化任务在服务启动后继续执行；不依赖浏览器会话或进程内存。
+void resumeKeywordRescanJobs();

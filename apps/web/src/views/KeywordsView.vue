@@ -8,7 +8,7 @@
           <p class="text-xs text-gray-500 mt-1">管理命中关键词类别，当合同或订单中出现该类别下的词或语义时，即认定为命中该关键词</p>
         </div>
         <div class="flex gap-2">
-        <el-button @click="showRescanModal = true">
+        <el-button v-if="isAdmin" @click="showRescanModal = true">
           重新扫描关键词
         </el-button>
         <el-button
@@ -43,6 +43,16 @@
         </el-select>
 
         <el-button @click="handleReset">重置</el-button>
+      </div>
+    </div>
+
+    <div v-if="rescanJobs.length" class="content-card mb-4 p-4">
+      <div class="flex items-center justify-between mb-3"><span class="font-semibold text-[#1A1A1A]">关键词重扫任务</span><span class="text-xs text-gray-400">保留最近 20 次</span></div>
+      <div v-for="job in rescanJobs" :key="job.id" class="flex items-center gap-3 py-2 border-t border-gray-100 text-xs">
+        <span class="font-mono text-gray-500">#{{ job.id }}</span><span>{{ scopeLabel(job.scope) }}</span>
+        <span class="tag" :class="job.status === 'completed' ? 'tag-green' : job.status.includes('failed') ? 'tag-red' : 'tag-blue'">{{ statusLabel(job.status) }}</span>
+        <span class="text-gray-500">{{ job.success_count + job.skipped_count + job.failed_count }}/{{ job.total_count }} · 成功 {{ job.success_count }} · 跳过 {{ job.skipped_count }} · 失败 {{ job.failed_count }}</span>
+        <el-button v-if="isAdmin && job.failed_count" link size="small" @click="retryJob(job.id)">重试失败项</el-button>
       </div>
     </div>
 
@@ -189,10 +199,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { Plus, Search, Close } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { keywordApi, type KeywordItem } from '../api';
+import { keywordApi, type KeywordItem, type KeywordRescanJob } from '../api';
 import KeywordModal from '../components/modals/KeywordModal.vue';
 import KwSubModal from '../components/modals/KwSubModal.vue';
 import RescanKeywordsModal from '../components/modals/RescanKeywordsModal.vue';
@@ -213,10 +223,21 @@ const currentMasterId = ref<number | null>(null);
 const currentMasterName = ref('');
 const currentExistingSubWords = ref<string[]>([]);
 const showRescanModal = ref(false);
+const isAdmin = Number(JSON.parse(localStorage.getItem('contract_user') || '{}').role) === 0;
+const rescanJobs = ref<KeywordRescanJob[]>([]);
+let jobTimer: ReturnType<typeof setInterval> | undefined;
 
 onMounted(() => {
   loadData();
+  loadRescanJobs();
+  jobTimer = setInterval(loadRescanJobs, 3000);
 });
+onUnmounted(() => { if (jobTimer) clearInterval(jobTimer); });
+
+async function loadRescanJobs() { const res = await keywordApi.getRescanJobs(); if (res.code === 200) rescanJobs.value = res.data.list; }
+function scopeLabel(scope: string) { return scope === 'all' ? '合同 + 订单' : scope === 'contract' ? '仅合同' : '仅订单'; }
+function statusLabel(status: string) { return ({ queued: '排队中', running: '进行中', completed: '已完成', completed_with_errors: '完成（有失败）', failed: '任务失败' } as Record<string, string>)[status] || status; }
+async function retryJob(id: number) { const res = await keywordApi.retryRescan(id); if (res.code === 200) { ElMessage.success('失败项已开始重试'); loadRescanJobs(); } }
 
 async function loadData() {
   loading.value = true;

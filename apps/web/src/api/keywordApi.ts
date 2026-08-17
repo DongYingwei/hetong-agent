@@ -9,6 +9,11 @@ export interface KeywordItem {
   sub_words: string[];
   status: number;
 }
+export interface KeywordRescanJob {
+  id: number; scope: 'contract' | 'order' | 'all'; status: string; requested_by: string;
+  total_count: number; success_count: number; skipped_count: number; failed_count: number;
+  queued_count?: number; running_count?: number; started_at?: string; finished_at?: string;
+}
 
 export const keywordApi = {
   getList(params: { page?: number; pageSize?: number; keyword?: string; status?: number | string }): Promise<ApiResponse<PageResult<KeywordItem>>> {
@@ -40,7 +45,8 @@ export const keywordApi = {
     return request.post('/keyword/sub/remove', { keyword_id, sub_word });
   },
 
-  rescan(overwriteManual = false): Promise<ApiResponse<{ contracts: number }>> {
-    return request.post('/keyword/rescan', { overwrite_manual: overwriteManual });
-  },
+  getRescanJobs(): Promise<ApiResponse<{ list: KeywordRescanJob[] }>> { return request.get('/keyword-rescan/jobs'); },
+  startRescan(data: { scope: 'contract' | 'order' | 'all'; overwrite_manual: boolean }): Promise<ApiResponse<{ existing: boolean; job: KeywordRescanJob }>> { return request.post('/keyword-rescan/jobs', data); },
+  retryRescan(id: number): Promise<ApiResponse<{ existing: boolean; job: KeywordRescanJob }>> { return request.post(`/keyword-rescan/jobs/${id}/retry`); },
+  getRescanFailures(id: number): Promise<ApiResponse<{ list: Array<{ entity_type: string; entity_no: string; error_message: string }> }>> { return request.get(`/keyword-rescan/jobs/${id}/failures`); },
 };

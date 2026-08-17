@@ -2,7 +2,7 @@
   <el-dialog v-model="visible" title="重新扫描关键词" width="500px" destroy-on-close>
     <el-form label-width="110px" label-position="right" class="px-2">
       <el-form-item label="扫描范围">
-        <div class="text-sm text-[#303133]">全部已入库合同</div>
+        <el-radio-group v-model="scope"><el-radio value="all">合同 + 订单</el-radio><el-radio value="contract">仅合同</el-radio><el-radio value="order">仅订单</el-radio></el-radio-group>
         <div class="text-xs text-gray-400 mt-1">按当前启用的模块、关键词和子词重新计算命中结果。</div>
       </el-form-item>
       <el-form-item label="处理内容">
@@ -29,22 +29,23 @@ import { ElMessage } from 'element-plus';
 import { keywordApi } from '../../api';
 
 const props = defineProps<{ modelValue: boolean }>();
-const emit = defineEmits<{ 'update:modelValue': [value: boolean]; success: [contracts: number] }>();
+const emit = defineEmits<{ 'update:modelValue': [value: boolean]; success: [] }>();
 const visible = ref(false);
 const overwriteManual = ref(false);
+const scope = ref<'contract' | 'order' | 'all'>('all');
 const loading = ref(false);
 
-watch(() => props.modelValue, (value) => { visible.value = value; if (value) overwriteManual.value = false; });
+watch(() => props.modelValue, (value) => { visible.value = value; if (value) { overwriteManual.value = false; scope.value = 'all'; } });
 watch(visible, (value) => emit('update:modelValue', value));
 
 async function submit() {
   loading.value = true;
   try {
-    const res = await keywordApi.rescan(overwriteManual.value);
+    const res = await keywordApi.startRescan({ scope: scope.value, overwrite_manual: overwriteManual.value });
     if (res.code !== 200) return ElMessage.error(res.msg || '重新扫描失败');
-    ElMessage.success(`已扫描 ${res.data.contracts} 份合同`);
+    ElMessage.success(res.data.existing ? '已有任务正在执行，已展示最新进度' : '关键词重扫任务已启动');
     visible.value = false;
-    emit('success', res.data.contracts);
+    emit('success');
   } catch (error: any) {
     ElMessage.error(error?.message || '重新扫描失败');
   } finally {
