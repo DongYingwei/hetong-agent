@@ -430,7 +430,8 @@ async function handleSubmit() {
       gender: form.gender,
       email: form.email,
       telephone: form.telephone,
-      birthday: form.birthday,
+      // PostgreSQL DATE 列以 null 表示未填写，不能传空字符串。
+      birthday: form.birthday || null,
       identity: form.identity,
       respDepartment: form.respDepartment,
       sort: form.sort,

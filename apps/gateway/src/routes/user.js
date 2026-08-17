@@ -4,6 +4,11 @@ import { hashPassword } from '../utils/crypto.js';
 
 const router = new Router({ prefix: '/api/user' });
 
+/** PostgreSQL DATE 列不能写入空字符串；未填写日期统一落为 NULL。 */
+function nullableDate(value) {
+  return typeof value === 'string' && value.trim() === '' ? null : (value ?? null);
+}
+
 /**
  * 分页获取用户列表 (满足 requirement #31)
  */
@@ -105,7 +110,7 @@ router.post('/create', async (ctx) => {
       gender,
       email,
       telephone,
-      birthday,
+      nullableDate(birthday),
       identity,
       respDepartment,
       sort,
@@ -158,6 +163,7 @@ router.put('/update', async (ctx) => {
     resp_department = ?, 
     sort = ?`;
   
+  const birthdayValue = nullableDate(birthday);
   const params = [
     realName,
     role,
@@ -169,7 +175,7 @@ router.put('/update', async (ctx) => {
     gender,
     email,
     telephone,
-    birthday,
+    birthdayValue,
     identity,
     respDepartment,
     sort,
