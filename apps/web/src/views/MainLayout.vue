@@ -2,9 +2,9 @@
   <div class="flex h-screen w-screen overflow-hidden bg-gray-100">
     <!-- 侧边栏 (1:1 还原 demo3.html 菜单结构与样式) -->
     <aside class="fixed left-3 top-3 bottom-3 w-[240px] bg-[#fff8f2] flex flex-col z-50 overflow-hidden border border-[#faeae1]" style="border-radius: 21px;">
-      <!-- 设计稿头像 -->
+      <!-- 系统 Logo -->
       <div class="flex items-center gap-2.5 px-[26px] pt-6 pb-3 border-b border-[#faeae1]">
-        <img :src="designerAvatar" alt="经小管智能体" class="w-8 h-8 rounded-lg object-cover shrink-0" />
+        <img :src="logoImg" alt="经小管智能体" class="w-8 h-8 rounded-lg object-cover shrink-0" />
         <div class="flex-1 min-w-0">
           <span class="text-[#1f1f1f] text-base font-semibold block truncate">经小管智能体</span>
         </div>
@@ -177,7 +177,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue';
-import designerAvatar from '../assets/designerAvatar';
+import logoImg from '../assets/image/logo.png';
 import { useRoute, useRouter } from 'vue-router';
 import {
   Setting,
