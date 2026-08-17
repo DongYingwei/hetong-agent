@@ -4,7 +4,7 @@ import { query } from '../config/db.js';
 const router = new Router({ prefix: '/api/department' });
 
 /**
- * 获取部门列表 (MySQL 数据库)
+ * 获取部门列表（运营 PostgreSQL 数据库）
  */
 router.get('/list', async (ctx) => {
   const sql = 'SELECT * FROM sys_department WHERE delete_status = 0 ORDER BY sort ASC, id ASC';
@@ -13,7 +13,7 @@ router.get('/list', async (ctx) => {
 });
 
 /**
- * 创建部门 (保存写入 MySQL 数据库)
+ * 创建部门（保存至运营 PostgreSQL 数据库）
  */
 router.post('/create', async (ctx) => {
   let { parentId = 0, parentName = '', deptCode = '', deptName, leader = '', sort = 1, status = 1 } = ctx.request.body;
@@ -43,7 +43,7 @@ router.post('/create', async (ctx) => {
 });
 
 /**
- * 修改部门 (保存写入 MySQL 数据库)
+ * 修改部门（保存至运营 PostgreSQL 数据库）
  */
 router.put('/update', async (ctx) => {
   const { id, parentId = 0, deptCode = '', deptName, leader = '', sort = 1, status = 1 } = ctx.request.body;
