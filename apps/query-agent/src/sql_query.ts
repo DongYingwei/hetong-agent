@@ -18,7 +18,8 @@
 import pg from "pg";
 import { assertReadOnly, NotReadOnlyError } from "./assertReadOnly.js";
 
-const ROW_LIMIT = 500; // 防线②：单次结果行数封顶
+const ROW_LIMIT = 10_000; // 网关仅保存命中 ID；不把完整行回灌给模型，允许全量检索集最多 1 万条
+const MODEL_PREVIEW_ROWS = 20;
 const STATEMENT_TIMEOUT_MS = 8000; // 防线②：单条语句超时
 
 interface SqlQueryParams {
@@ -29,10 +30,13 @@ interface SqlQueryParams {
    * 本工具不改写模型 SQL 的语义，仅在最外层附加 id 约束（见 execute）。
    */
   contract_ids?: number[];
+  /** 数据源由 Harness 决定。orders 只允许订单台账查询。 */
+  source?: "contracts" | "orders";
 }
 
 // 只读连接池（惰性建，复用）。连接串走只读账号（G1）。
 let pool: pg.Pool | null = null;
+let orderPool: pg.Pool | null = null;
 function getPool(): pg.Pool {
   if (pool) return pool;
   const conn = process.env.PG_READONLY_URL;
@@ -45,6 +49,16 @@ function getPool(): pg.Pool {
   return pool;
 }
 
+function getOrderPool(): pg.Pool {
+  if (orderPool) return orderPool;
+  const conn = process.env.PG_ORDER_READONLY_URL;
+  if (!conn) {
+    throw new Error("缺少订单只读连接串（PG_ORDER_READONLY_URL）。订单综合检索不会使用合同库或写库账号替代。");
+  }
+  orderPool = new pg.Pool({ connectionString: conn, max: 4 });
+  return orderPool;
+}
+
 /** 防线②：把已确认只读的 SELECT 外包一层 LIMIT，行数封顶且不改内层语义。 */
 function capRows(readonlySql: string): string {
   return `SELECT * FROM (${readonlySql}) AS _capped LIMIT ${ROW_LIMIT}`;
@@ -53,9 +67,8 @@ function capRows(readonlySql: string): string {
 export default {
   name: "sql_query",
   description:
-    "对合同结构化库执行【只读 SELECT】。你直接生成单条 PostgreSQL SELECT 语句传入 sql 参数" +
-    "（可含多表 JOIN，模块过滤须 JOIN contract_module_hits）。严格依据 jinguan-schema 数据字典的列语义，" +
-    "不得臆造列名。金额求和须带 amount IS NOT NULL；混口径按 amount_type 分组求和。" +
+    "对指定台账执行【只读 SELECT】。合同用默认 source=contracts；订单必须 source=orders。你直接生成单条 PostgreSQL SELECT 语句传入 sql 参数" +
+    "（模块过滤须 JOIN 对应 *_module_hits）。严格依据 jinguan-schema 数据字典的列语义，不得臆造列名。" +
     "可选 contract_ids：把结果限定在指定合同集合（向量→SQL 联动时用）。",
   parameters: {
     type: "object",
@@ -69,6 +82,11 @@ export default {
         type: "array",
         items: { type: "number" },
         description: "可选：向量检索返回的合同 id 列表，用于二次统计。",
+      },
+      source: {
+        type: "string",
+        enum: ["contracts", "orders"],
+        description: "数据源：合同为 contracts（默认），订单为 orders。",
       },
     },
     required: ["sql"],
@@ -100,14 +118,16 @@ export default {
 
     const finalSql = capRows(effectiveSql); // 防线②：行数封顶
 
-    const client = await getPool().connect();
+    const client = (params.source === "orders" ? getOrderPool() : getPool()).connect();
+    const connection = await client;
     try {
       // 防线②：语句超时（会话级，仅本连接）。
-      await client.query(`SET statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
-      const res = await client.query(finalSql, params_values);
+      await connection.query(`SET statement_timeout = ${STATEMENT_TIMEOUT_MS}`);
+      const res = await connection.query(finalSql, params_values);
       const result = { rows: res.rows, rowCount: res.rowCount ?? res.rows.length };
       return {
-        content: [{ type: "text", text: JSON.stringify(result) }],
+        // CoreMind 只需要确认命中与少量样本；完整命中行仅经 details 交给 HTTP wrapper/网关。
+        content: [{ type: "text", text: JSON.stringify({ rows: res.rows.slice(0, MODEL_PREVIEW_ROWS), rowCount: result.rowCount, preview: res.rows.length > MODEL_PREVIEW_ROWS }) }],
         details: result,
       };
     } catch (e) {
@@ -118,7 +138,7 @@ export default {
         details: { error: "db_error", message },
       };
     } finally {
-      client.release();
+      connection.release();
     }
   },
 };

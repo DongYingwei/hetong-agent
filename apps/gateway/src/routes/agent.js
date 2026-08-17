@@ -30,7 +30,7 @@ function stripInternalSql(content) {
     .trim();
 }
 
-function collectContractRefs(result) {
+function collectRefs(result, entity) {
   const ids = [];
   const nos = [];
   const addId = (value) => {
@@ -43,13 +43,15 @@ function collectContractRefs(result) {
   };
   for (const row of result.tableData || []) {
     if (row && typeof row === 'object') {
-      addId(row.id ?? row.contract_id);
-      addNo(row.contract_no);
+      addId(row.id ?? (entity === 'contract' ? row.contract_id : row.order_id));
+      addNo(entity === 'contract' ? row.contract_no : row.order_no);
     }
   }
   for (const citation of result.citations || []) {
-    addId(citation.contract_id);
-    addNo(citation.contract_no);
+    if (entity === 'contract') {
+      addId(citation.contract_id);
+      addNo(citation.contract_no);
+    }
   }
   return { ids, nos };
 }
@@ -86,15 +88,54 @@ async function loadContracts(refs) {
 function summarizeContracts(contracts, kind) {
   const withAmount = contracts.filter((item) => item.amount !== null && item.amount !== undefined && item.amount !== '');
   const totalAmount = withAmount.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const byAmountType = new Map();
+  for (const item of withAmount) {
+    const type = String(item.amount_type || '未标注');
+    const current = byAmountType.get(type) || { amount_type: type, contract_count: 0, total_amount: 0 };
+    current.contract_count += 1;
+    current.total_amount += Number(item.amount || 0);
+    byAmountType.set(type, current);
+  }
   return {
     scope: kind === 'rag' ? '当前检索结果汇总' : '合同台账汇总',
     contract_count: contracts.length,
     total_amount: Number(totalAmount.toFixed(2)),
     missing_amount_count: contracts.length - withAmount.length,
+    amount_type_breakdown: [...byAmountType.values()].map((item) => ({ ...item, total_amount: Number(item.total_amount.toFixed(2)) })),
   };
 }
 
-function buildProcess(raw, contracts) {
+async function loadOrders(refs) {
+  if (refs.ids.length === 0 && refs.nos.length === 0) return [];
+  const rows = await query(
+    `SELECT o.*, omo.values AS manual_values
+       FROM sys_order o LEFT JOIN order_manual_overrides omo ON omo.order_id=o.id
+      WHERE o.delete_status=0 AND (o.id = ANY($1::bigint[]) OR o.order_no = ANY($2::text[]))`,
+    [refs.ids, refs.nos],
+  );
+  if (!rows.length) return [];
+  const ids = rows.map((row) => row.id);
+  const hits = await query(`SELECT order_id,module_key,hit,keywords,raw_text FROM order_module_hits
+                              WHERE order_id = ANY($1::bigint[]) ORDER BY order_id,module_key`, [ids]);
+  const byOrder = new Map();
+  for (const hit of hits) byOrder.set(hit.order_id, [...(byOrder.get(hit.order_id) || []), hit]);
+  const mapped = rows.map((row) => ({ ...row, ...(row.manual_values || {}), has_ai_keyword: row.tag_ai ?? 0, module_hits: byOrder.get(row.id) || [] }));
+  const byId = new Map(mapped.map((row) => [Number(row.id), row]));
+  const byNo = new Map(mapped.map((row) => [row.order_no, row]));
+  return [...refs.ids.map((id) => byId.get(id)), ...refs.nos.map((no) => byNo.get(no))]
+    .filter(Boolean).filter((row, index, all) => all.findIndex((item) => item.id === row.id) === index);
+}
+
+function summarizeOrders(orders) {
+  const withAmount = orders.filter((item) => item.amount !== null && item.amount !== undefined && item.amount !== '');
+  const totalAmount = withAmount.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  return {
+    scope: '订单台账汇总', order_count: orders.length,
+    total_amount: Number(totalAmount.toFixed(2)), missing_amount_count: orders.length - withAmount.length,
+  };
+}
+
+function buildProcess(raw, records, entity) {
   const hasSql = Array.isArray(raw.tableData) && raw.tableData.length > 0;
   const hasRag = Array.isArray(raw.citations) && raw.citations.length > 0;
   const steps = [];
@@ -102,9 +143,10 @@ function buildProcess(raw, contracts) {
     steps.push({ label: '识别为合同正文检索', status: 'done' });
     steps.push({ label: `已检索并精排相关正文片段（${raw.citations.length} 条）`, status: 'done' });
   }
-  if (hasSql) steps.push({ label: hasRag ? '已按台账条件筛选候选合同' : '已查询合同台账条件', status: 'done' });
-  if (contracts.length > 0) steps.push({ label: `已匹配 ${contracts.length} 份合同并汇总合同金额`, status: 'done' });
-  if (steps.length === 0) steps.push({ label: '未检索到可验证的合同依据', status: 'done' });
+  const label = entity === 'order' ? '订单' : '合同';
+  if (hasSql) steps.push({ label: hasRag ? '已按台账条件筛选候选合同' : `已查询${label}台账条件`, status: 'done' });
+  if (records.length > 0) steps.push({ label: `已匹配 ${records.length} 条${label}台账并汇总金额`, status: 'done' });
+  if (steps.length === 0) steps.push({ label: `未检索到可验证的${label}依据`, status: 'done' });
   return steps;
 }
 
@@ -177,6 +219,25 @@ router.delete('/sessions', async (ctx) => {
   ctx.success(null, '检索历史已清空');
 });
 
+/** 检索命中明细按页读取：不让大结果集进入模型上下文或单次聊天响应。 */
+router.get('/results/:messageId', async (ctx) => {
+  const messageId = Number(ctx.params.messageId);
+  const page = Math.max(Number(ctx.query.page || 1), 1);
+  const pageSize = Math.min(Math.max(Number(ctx.query.pageSize || 20), 1), 200);
+  const rows = await query(`SELECT m.result_data FROM agent_messages m
+    JOIN agent_sessions s ON s.id=m.session_id
+    WHERE m.id=? AND s.user_id=? AND s.deleted_at IS NULL`, [messageId, ctx.state.user.id]);
+  const resultData = rows[0]?.result_data;
+  if (!resultData?.entity || !Array.isArray(resultData.record_ids)) return ctx.fail('检索结果不存在或不含台账明细', 404);
+  const ids = resultData.record_ids.map(Number).filter(Number.isInteger);
+  const entity = resultData.entity === 'order' ? 'order' : 'contract';
+  const all = entity === 'order'
+    ? await loadOrders({ ids, nos: [] })
+    : await loadContracts({ ids, nos: [] });
+  const start = (page - 1) * pageSize;
+  ctx.success({ entity, list: all.slice(start, start + pageSize), total: all.length, page, pageSize });
+});
+
 router.post('/chat', async (ctx) => {
   const { message, sessionId } = ctx.request.body || {};
   if (!message || !String(message).trim()) return ctx.fail('消息内容不能为空', 400);
@@ -187,24 +248,36 @@ router.post('/chat', async (ctx) => {
   const history = await historyForAgent(session.id);
   await query('INSERT INTO agent_messages(session_id, role, content) VALUES (?, ?, ?)', [session.id, 'user', String(message).trim()]);
   const decision = classifySearch(message);
-  if (decision.kind === 'reject' || decision.kind === 'ambiguous' || decision.kind === 'order-unavailable') {
-    const response = { content: decision.reason, contracts: [], summary: summarizeContracts([], 'sql'), citations: [], process: [{ label: decision.kind === 'reject' ? '已识别为非检索问题' : '已识别检索对象', status: 'done' }] };
+  if (decision.kind === 'reject' || decision.kind === 'ambiguous') {
+    const response = { content: decision.reason, entity: 'contract', records: [], contracts: [], summary: summarizeContracts([], 'sql'), citations: [], process: [{ label: decision.kind === 'reject' ? '已识别为非检索问题' : '已识别检索对象', status: 'done' }] };
     await query('INSERT INTO agent_messages(session_id, role, content, result_data) VALUES (?, ?, ?, ?)', [session.id, 'assistant', response.content, JSON.stringify(response)]);
     return ctx.success({ sessionId: session.id, ...response });
   }
   const result = await chat(String(message).trim(), history, harnessInstruction(decision.kind));
   if (!result.success) return ctx.fail(result.error || '智能体处理失败', result.code || 500);
 
-  const contracts = await loadContracts(collectContractRefs(result));
+  const entity = decision.kind === 'order-sql' ? 'order' : 'contract';
+  const refs = collectRefs(result, entity);
+  const records = entity === 'order' ? await loadOrders(refs) : await loadContracts(refs);
+  const summary = entity === 'order'
+    ? summarizeOrders(records)
+    : summarizeContracts(records, result.citations?.length ? 'rag' : 'sql');
   const response = {
     content: stripInternalSql(result.content),
-    contracts,
-    summary: summarizeContracts(contracts, result.citations?.length ? 'rag' : 'sql'),
+    entity,
+    // 仅首屏 5 条完整台账；完整 ID 集持久化于 result_data，供展开与导出分页读取。
+    records: records.slice(0, 5),
+    record_ids: records.map((item) => item.id),
+    contracts: entity === 'contract' ? records.slice(0, 5) : [],
+    orders: entity === 'order' ? records.slice(0, 5) : [],
+    summary,
     citations: result.citations || [],
-    process: buildProcess(result, contracts),
+    process: buildProcess(result, records, entity),
   };
-  await query('INSERT INTO agent_messages(session_id, role, content, result_data) VALUES (?, ?, ?, ?)',
+  const inserted = await query('INSERT INTO agent_messages(session_id, role, content, result_data) VALUES (?, ?, ?, ?) RETURNING id',
     [session.id, 'assistant', response.content || '未检索到可靠合同依据。', JSON.stringify(response)]);
+  response.resultId = inserted[0]?.id;
+  await query('UPDATE agent_messages SET result_data=? WHERE id=?', [JSON.stringify(response), response.resultId]);
   await query('UPDATE agent_sessions SET title=CASE WHEN title=? THEN ? ELSE title END, updated_at=now() WHERE id=?',
     ['新检索会话', String(message).trim().slice(0, 80), session.id]);
   ctx.success({ sessionId: session.id, ...response });

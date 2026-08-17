@@ -17,8 +17,13 @@ export interface Citation {
 export interface AgentChatResult {
   content: string;
   sessionId: string;
+  resultId?: number;
+  entity?: 'contract' | 'order';
+  records?: Record<string, unknown>[];
+  record_ids?: number[];
   contracts?: Record<string, unknown>[];
-  summary?: { scope: string; contract_count: number; total_amount: number; missing_amount_count: number };
+  orders?: Record<string, unknown>[];
+  summary?: { scope: string; contract_count?: number; order_count?: number; total_amount: number; missing_amount_count: number; amount_type_breakdown?: Array<{ amount_type: string; contract_count: number; total_amount: number }> };
   process?: Array<{ label: string; status: string }>;
   citations?: Citation[];
 }
@@ -32,6 +37,7 @@ export const agentApi = {
   chat(data: { message: string; sessionId?: string }): Promise<ApiResponse<AgentChatResult>> {
     return request.post('/agent/chat', data);
   },
+  getResult(id: number, params: { page?: number; pageSize?: number } = {}): Promise<ApiResponse<{ entity: 'contract' | 'order'; list: Record<string, unknown>[]; total: number; page: number; pageSize: number }>> { return request.get(`/agent/results/${id}`, { params }); },
   getSessions(): Promise<ApiResponse<{ list: AgentSession[] }>> { return request.get('/agent/sessions'); },
   getSession(id: string): Promise<ApiResponse<{ session: AgentSession; messages: Array<{ role: 'user' | 'assistant'; content: string; result_data?: AgentChatResult }> }>> { return request.get(`/agent/sessions/${id}`); },
   createSession(): Promise<ApiResponse<AgentSession>> { return request.post('/agent/sessions'); },

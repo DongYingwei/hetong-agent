@@ -57,6 +57,7 @@ export interface RichChatResponse {
   tableData?: Record<string, unknown>[];
   sql?: string;
   citations?: Citation[];
+  source?: "contracts" | "orders";
 }
 
 /** CoreMind 归一化事件里我们只看 tool_call（拿 args.sql / args.query / args.mode）。 */
@@ -135,6 +136,16 @@ function extractSql(events: ToolCallEvent[]): string | undefined {
   return sql;
 }
 
+function extractSqlSource(events: ToolCallEvent[]): "contracts" | "orders" | undefined {
+  let source: "contracts" | "orders" | undefined;
+  for (const event of events) {
+    if (event.type !== "tool_call" || event.tool !== "sql_query") continue;
+    const value = (event.args as { source?: unknown } | undefined)?.source;
+    if (value === "contracts" || value === "orders") source = value;
+  }
+  return source;
+}
+
 /** 从 messages 里取最后一次指定工具的结构化结果（可指定字段）。 */
 function extractToolResultField(messages: unknown[], toolName: string, field: string): unknown[] | undefined {
   let found: unknown[] | undefined;
@@ -156,6 +167,7 @@ export function toRichFormat(turn: TurnLike): RichChatResponse {
   const messages = flattenMessages(turn.run.messages);
 
   const sql = extractSql(turn.events);
+  const source = extractSqlSource(turn.events);
   const rows = extractToolResultField(messages, "sql_query", "rows");
   const fragments = extractToolResultField(messages, "vector_search", "fragments");
 
@@ -164,6 +176,7 @@ export function toRichFormat(turn: TurnLike): RichChatResponse {
     response.tableData = rows as Record<string, unknown>[];
   }
   if (sql) response.sql = sql;
+  if (source) response.source = source;
   if (fragments && fragments.length > 0) {
     response.citations = fragments as Citation[];
   }

@@ -94,9 +94,12 @@
                       </div>
                     </details>
                   </div>
-                  <div v-if="msg.summary" class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">{{ msg.summary.scope }}：共 {{ msg.summary.contract_count }} 份合同；合同金额合计 {{ formatAmount(msg.summary.total_amount) }}；{{ msg.summary.missing_amount_count }} 份未填写合同金额，未计入合计。</div>
-                  <div class="flex gap-2"><el-button size="small" @click="handleExportResult(msg)"><el-icon class="mr-1"><Download /></el-icon>导出合同台账</el-button></div>
                 </div>
+                  <div v-if="msg.summary" class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
+                    {{ msg.summary.scope }}：共 {{ msg.entity === 'order' ? msg.summary.order_count : msg.summary.contract_count }} 条{{ msg.entity === 'order' ? '订单' : '合同' }}；金额合计 {{ formatAmount(msg.summary.total_amount) }}；{{ msg.summary.missing_amount_count }} 条未填写金额，未计入合计。
+                    <div v-if="msg.summary.amount_type_breakdown?.length" class="mt-1 text-gray-500">金额口径说明：<span v-for="(item, index) in msg.summary.amount_type_breakdown" :key="item.amount_type">{{ index ? '；' : '' }}{{ item.amount_type }} {{ item.contract_count }} 份，{{ formatAmount(item.total_amount) }}</span></div>
+                  </div>
+                  <div class="flex gap-2"><el-button size="small" @click="handleExportResult(msg)"><el-icon class="mr-1"><Download /></el-icon>导出{{ msg.entity === 'order' ? '订单' : '合同' }}台账</el-button></div>
 
                 <!-- 结构化结果表格（列名随 SQL 动态变化） -->
                 <div v-if="msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
@@ -133,11 +136,11 @@
                     </table>
                   </div>
 
-                  <div v-if="msg.tableData.length > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t border-gray-200 flex items-center justify-between font-mono">
-                    <span v-if="!msg.isExpanded">...共 {{ msg.tableData.length }} 条明细，当前已精简展示前 5 条</span>
+                  <div v-if="(msg.resultTotal || msg.tableData.length) > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t border-gray-200 flex items-center justify-between font-mono">
+                    <span v-if="!msg.isExpanded">...共 {{ msg.resultTotal || msg.tableData.length }} 条明细，当前已精简展示前 5 条</span>
                     <span v-else class="text-gray-700 font-semibold">✓ 已展开全量 {{ msg.tableData.length }} 条明细</span>
-                    <span class="text-[#303133] cursor-pointer font-bold hover:underline select-none" @click="msg.isExpanded = !msg.isExpanded">
-                      {{ msg.isExpanded ? '收起明细 ▲' : '展开查看全部明细 ▼' }}
+                    <span class="text-[#303133] cursor-pointer font-bold hover:underline select-none" @click="toggleDetails(msg)">
+                      {{ msg.loadingDetails ? '正在加载全部明细…' : (msg.isExpanded ? '收起明细 ▲' : '展开查看全部明细 ▼') }}
                     </span>
                   </div>
                 </div>
@@ -233,7 +236,7 @@ import { Plus, ChatDotSquare, Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { agentApi, type Citation, type TableRowItem } from '../api/agentApi';
 import { contractApi, orderApi } from '../api';
-import { exportFullContractLedgerExcel } from '../utils/excelExporter';
+import { exportFullContractLedgerExcel, exportFullOrderLedgerExcel } from '../utils/excelExporter';
 import { renderAssistantContent } from '../utils/markdown';
 
 interface MessageItem {
@@ -243,9 +246,14 @@ interface MessageItem {
   sql?: string;
   citations?: Citation[];
   contracts?: Record<string, any>[];
-  summary?: { scope: string; contract_count: number; total_amount: number; missing_amount_count: number };
+  orders?: Record<string, any>[];
+  entity?: 'contract' | 'order';
+  resultId?: number;
+  resultTotal?: number;
+  summary?: { scope: string; contract_count?: number; order_count?: number; total_amount: number; missing_amount_count: number; amount_type_breakdown?: Array<{ amount_type: string; contract_count: number; total_amount: number }> };
   process?: Array<{ label: string; status: string }>;
   isExpanded?: boolean;
+  loadingDetails?: boolean;
 }
 
 // DB 列名 → 中文展示名。未命中的列按原始列名展示（不臆造、不补默认）。
@@ -388,7 +396,10 @@ async function selectHistory(index: number) {
   const res = await agentApi.getSession(item.id);
   if (res.code !== 200) return ElMessage.error(res.msg || '读取会话失败');
   sessionId.value = item.id;
-  messages.value = [{ role: 'assistant', content: WELCOME }, ...(res.data.messages || []).map((m: any) => ({ role: m.role, content: m.content, ...(m.result_data || {}) }))];
+  messages.value = [{ role: 'assistant', content: WELCOME }, ...(res.data.messages || []).map((m: any) => {
+    const data = m.result_data || {};
+    return { role: m.role, content: m.content, ...data, tableData: data.records || data.tableData, resultTotal: data.record_ids?.length || data.records?.length || 0 };
+  })];
   scrollToBottom();
 }
 
@@ -413,6 +424,11 @@ async function handleSend() {
         role: 'assistant',
         content: res.data.content || '',
         contracts: res.data.contracts,
+        orders: res.data.orders,
+        entity: res.data.entity,
+        resultId: res.data.resultId,
+        resultTotal: res.data.record_ids?.length || res.data.records?.length || 0,
+        tableData: res.data.records,
         summary: res.data.summary,
         process: res.data.process,
         citations: res.data.citations,
@@ -439,18 +455,47 @@ async function handleClearChat() {
 }
 
 async function handleExportResult(msg: MessageItem) {
-  const list = msg.contracts;
+  let list = msg.tableData || [];
+  if (msg.resultId && (msg.resultTotal || 0) > list.length) {
+    const res = await agentApi.getResult(msg.resultId, { page: 1, pageSize: 200 });
+    if (res.code !== 200) return ElMessage.error(res.msg || '读取完整检索结果失败');
+    list = res.data.list as TableRowItem[];
+    for (let page = 2; list.length < res.data.total; page += 1) {
+      const more = await agentApi.getResult(msg.resultId, { page, pageSize: 200 });
+      if (more.code !== 200) return ElMessage.error(more.msg || '读取完整检索结果失败');
+      list.push(...more.data.list as TableRowItem[]);
+    }
+  }
   if (!list || list.length === 0) {
     ElMessage.warning('无可导出的结果');
     return;
   }
 
   try {
-    await exportFullContractLedgerExcel(list, '综合检索合同台账');
-    ElMessage.success(`合同台账 Excel 已导出（共 ${list.length} 条）`);
+    if (msg.entity === 'order') await exportFullOrderLedgerExcel(list, '综合检索订单台账');
+    else await exportFullContractLedgerExcel(list, '综合检索合同台账');
+    ElMessage.success(`${msg.entity === 'order' ? '订单' : '合同'}台账 Excel 已导出（共 ${list.length} 条）`);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     ElMessage.error(`导出失败:${reason}`);
   }
+}
+
+async function toggleDetails(msg: MessageItem) {
+  if (msg.isExpanded) { msg.isExpanded = false; return; }
+  if (!msg.resultId || (msg.resultTotal || 0) <= (msg.tableData?.length || 0)) { msg.isExpanded = true; return; }
+  msg.loadingDetails = true;
+  try {
+    const rows: TableRowItem[] = [];
+    for (let page = 1; ; page += 1) {
+      const res = await agentApi.getResult(msg.resultId, { page, pageSize: 200 });
+      if (res.code !== 200) throw new Error(res.msg || '读取完整检索结果失败');
+      rows.push(...res.data.list as TableRowItem[]);
+      if (rows.length >= res.data.total) break;
+    }
+    msg.tableData = rows;
+    msg.isExpanded = true;
+  } catch (error) { ElMessage.error(error instanceof Error ? error.message : '读取完整检索结果失败'); }
+  finally { msg.loadingDetails = false; }
 }
 </script>

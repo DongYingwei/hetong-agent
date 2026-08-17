@@ -12,7 +12,7 @@
 
 ## 零、库与只读纪律
 
-- 库 = PostgreSQL。查询侧**只读** `contracts` / `contract_modules` / `contract_module_hits` / `contract_chunks` 四张查询表（草稿表 `contracts_draft` 是解析中间态，**永不读**）。
+- 库 = PostgreSQL。合同查询侧只读 `contracts` / `contract_modules` / `contract_module_hits` / `contract_chunks`；订单查询侧只读 `sys_order` / `order_module_hits`。草稿表 `contracts_draft` 永不读。
 - 只生成**单条 SELECT**；禁止 INSERT/UPDATE/DELETE/DDL/多语句（`assertReadOnly` 会真解析拦截）。
 - 只引用下列**已声明的列**，不得臆造列名。
 
@@ -181,7 +181,34 @@ WHERE EXISTS (SELECT 1 FROM contract_module_hits h
 
 ---
 
-## 七、示范解法（也是评测基线）
+## 七、sys_order —— 订单主表（订单查询入口）
+
+订单与合同是两套独立台账。订单问题调用 `sql_query` 时**必须传 `source='orders'`**，表别名建议为 `o`。每个面向客户的订单查询只 SELECT `o.id,o.order_no`，由网关补全完整订单台账、分页展示和导出。
+
+| 列名 | 含义 | 常见用法 |
+|---|---|---|
+| `id` | 主键 | 与 `order_module_hits.order_id` 关联 |
+| `order_no` | 订单编号 | 唯一标识、展示 |
+| `project_no` / `project_name` | 项目编号 / 项目名称 | 等值或 `ILIKE` 过滤 |
+| `order_name` | 订单名称 | `ILIKE` 过滤 |
+| `contract_no` | 关联合同编号 | 展示或等值过滤；不与合同台账联表统计 |
+| `customer_name` | 客户名称 | `ILIKE` 过滤 |
+| `assessment_line` / `order_type` / `order_attr` / `order_status` | 台账分类字段 | 等值过滤 |
+| `created_date` / `accepted_date` / `start_date` / `end_date` | 订单日期 | 日期区间过滤 / 排序 |
+| `amount` | 订单含税总额 | 可空；金额汇总由网关直接相加，不存在合同金额口径 |
+| `amount_ex_tax` | 订单不含税总额 | 用户明确要求不含税时才使用 |
+| `tag_ai` | 订单级 AI 标记 | `tag_ai=1` 表示四模块任一命中 |
+
+`order_module_hits` 的结构和合同模块命中表相同：`order_id`、`module_key`（`role`=项目名称、`service`=服务内容、`tech`=技术要求、`staff`=人员需求）、`hit`（0/1）、`keywords`。例如订单服务内容命中 AI：
+
+```sql
+SELECT o.id, o.order_no
+FROM sys_order o
+JOIN order_module_hits h ON h.order_id=o.id
+WHERE o.delete_status=0 AND h.module_key='service' AND h.hit=1
+```
+
+## 八、示范解法（也是评测基线）
 
 1. **「服务内容包含 AI 的合同有多少，给出编号和总金额」**
    → JOIN `contract_module_hits`（`module_key='service' AND hit=1`）；`COUNT` + 编号列表 + `SUM(amount) WHERE amount IS NOT NULL`；若混口径则分 `amount_type` 分行。
