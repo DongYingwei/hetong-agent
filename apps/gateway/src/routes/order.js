@@ -51,10 +51,20 @@ router.post('/update-keywords', async (ctx) => ctx.fail('订单 AI 关键词由�
 /** 人工编辑仅形成覆盖层，EPMS 下次同步不会覆盖人工确认的展示值。 */
 router.put('/detail/:id', async (ctx) => {
   const id = Number(ctx.params.id);
-  const allowed = new Set(['project_no', 'project_name', 'customer_order_no', 'order_name', 'contract_no', 'customer_name',
-    'assessment_line', 'customer_line', 'customer_type', 'settlement_type', 'order_type', 'order_attr', 'salesperson',
-    'customer_contract_no', 'customer_service_target', 'customer_pm', 'customer_order_name', 'created_date', 'accepted_date',
-    'start_date', 'end_date', 'est_invoice_date', 'order_status', 'tax_rate', 'amount', 'amount_ex_tax', 'income_confirmed']);
+  // 人工编辑写入覆盖层，允许修改所有台账业务字段；主键、EPMS 来源标识及 AI 解析结果仍只读。
+  const allowed = new Set([
+    'order_no', 'project_no', 'project_name', 'detail_project_no', 'customer_order_no', 'order_name', 'contract_no',
+    'customer_name', 'assessment_line', 'customer_line', 'customer_type', 'settlement_type', 'order_type', 'order_attr',
+    'salesperson', 'customer_contract_no', 'customer_service_target', 'customer_pm', 'customer_order_name',
+    'created_date', 'accepted_date', 'start_date', 'end_date', 'est_invoice_date', 'order_status', 'tax_rate', 'amount',
+    'amount_ex_tax', 'detail_order_no', 'customer_detail_order_no', 'redemption_days', 'is_last_order', 'detail_tax_rate',
+    'detail_amount', 'detail_amount_ex_tax', 'deduct_amount', 'deduct_amount_ex_tax', 'stop_invoice_amount',
+    'stop_invoice_amount_ex_tax', 'confirmed_income_amount', 'confirmed_income_amount_ex_tax', 'unconfirmed_income_amount',
+    'unconfirmed_income_amount_ex_tax', 'invoiced_amount', 'invoiced_amount_ex_tax', 'returned_amount',
+    'returned_amount_ex_tax', 'invoiced_unreturned_amount', 'invoiced_unreturned_amount_ex_tax', 'region', 'province',
+    'city', 'delivery_list', 'income_confirmed', 'maker', 'make_time', 'detail_maker', 'detail_make_time', 'updater',
+    'update_time', 'auditor', 'audit_time', 'has_attachment', 'latest_attachment_time', 'attachment_count', 'has_eml',
+  ]);
   const values = Object.fromEntries(Object.entries(ctx.request.body || {}).filter(([key, value]) => allowed.has(key) && value !== undefined));
   if (!Object.keys(values).length) return ctx.fail('没有可保存的编辑字段', 400);
   const exists = await query('SELECT id FROM sys_order WHERE id=? AND delete_status=0', [id]);
