@@ -70,7 +70,7 @@ router.get('/modules', async (ctx) => {
 router.get('/list', async (ctx) => {
   const page = parseInt(ctx.query.page || '1', 10);
   const pageSize = parseInt(ctx.query.pageSize || '10', 10);
-  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus } = ctx.query;
+  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType, roleAi = '', serviceAi = '', techAi = '', staffAi = '' } = ctx.query;
 
   const offset = (page - 1) * pageSize;
   let whereSql = 'WHERE 1=1';
@@ -89,6 +89,8 @@ router.get('/list', async (ctx) => {
     whereSql += ` AND COALESCE(cr.status, 0) = $${++n}`;
     params.push(parseInt(verifyStatus, 10));
   }
+  if (contractStatus) { whereSql += ` AND contracts.status = $${++n}`; params.push(String(contractStatus)); }
+  if (contractType) { whereSql += ` AND contracts.contract_type = $${++n}`; params.push(String(contractType)); }
   if (moduleKey) {
     whereSql += ` AND EXISTS (
       SELECT 1 FROM contract_module_hits cmh
@@ -99,6 +101,12 @@ router.get('/list', async (ctx) => {
       params.push(`%${moduleKeyword}%`);
     }
     whereSql += ')';
+  }
+  for (const [key, enabled] of [['role', roleAi], ['service', serviceAi], ['tech', techAi], ['staff', staffAi]]) {
+    if (String(enabled) === '1') {
+      whereSql += ` AND EXISTS (SELECT 1 FROM contract_module_hits cm WHERE cm.contract_id=contracts.id AND cm.module_key=$${++n} AND cm.hit=1)`;
+      params.push(key);
+    }
   }
 
   const fromSql = 'FROM contracts LEFT JOIN contract_manual_reviews cr ON cr.contract_id=contracts.id';

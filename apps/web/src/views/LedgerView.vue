@@ -30,38 +30,13 @@
           </template>
         </el-input>
 
-        <el-select v-model="filters.contractStatus" placeholder="合同状态" clearable style="width: 130px" @change="loadData">
-          <el-option
-            v-for="item in dictStore.dictMap.contract_status"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
+        <el-select v-model="filters.verifyStatus" placeholder="维护状态" clearable style="width: 130px">
+          <el-option v-for="item in dictStore.dictMap.verify_status" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-
-        <el-select v-model="filters.contractType" placeholder="合同类型" clearable style="width: 130px" @change="loadData">
-          <el-option
-            v-for="item in dictStore.dictMap.contract_type"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
+        <el-select v-for="module in modules.filter((m) => ['role','service','tech','staff'].includes(m.module_key))" :key="module.module_key" v-model="moduleFilters[module.module_key]" :placeholder="module.name" clearable style="width: 140px">
+          <el-option label="AI" value="1" />
         </el-select>
-
-        <el-select v-model="filters.verifyStatus" placeholder="核对状态" clearable style="width: 130px" @change="loadData">
-          <el-option
-            v-for="item in dictStore.dictMap.verify_status"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-
-        <!-- 查询库 contract_modules 动态驱动，筛选命中该模块的合同。 -->
-        <el-select v-model="filters.moduleKey" placeholder="AI命中模块" clearable style="width: 150px" @change="loadData">
-          <el-option v-for="module in modules" :key="module.module_key" :label="module.name" :value="module.module_key" />
-        </el-select>
-
+        <el-button type="primary" @click="loadData">查询</el-button>
         <el-button @click="handleReset">重置</el-button>
 
         <div class="ml-auto">
@@ -247,8 +222,9 @@ const filters = reactive({
   contractType: '',
   hasAiKeyword: '',
   verifyStatus: '',
-  moduleKey: '',
+  roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
+const moduleFilters = reactive<Record<string, string>>({ role: '', service: '', tech: '', staff: '' });
 
 onMounted(async () => {
   try {
@@ -270,7 +246,7 @@ async function loadData() {
       contractType: filters.contractType,
       hasAiKeyword: filters.hasAiKeyword,
       verifyStatus: filters.verifyStatus,
-      moduleKey: filters.moduleKey,
+      roleAi: moduleFilters.role, serviceAi: moduleFilters.service, techAi: moduleFilters.tech, staffAi: moduleFilters.staff,
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -287,7 +263,7 @@ function handleReset() {
   filters.contractType = '';
   filters.hasAiKeyword = '';
   filters.verifyStatus = '';
-  filters.moduleKey = '';
+  moduleFilters.role = ''; moduleFilters.service = ''; moduleFilters.tech = ''; moduleFilters.staff = '';
   page.value = 1;
   loadData();
 }

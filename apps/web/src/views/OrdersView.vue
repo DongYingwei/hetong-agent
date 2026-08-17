@@ -55,6 +55,7 @@
           <el-option label="AI" value="1" />
         </el-select>
 
+        <el-button type="primary" @click="loadData">查询</el-button>
         <el-button @click="handleReset">重置</el-button>
       </div>
     </div>
