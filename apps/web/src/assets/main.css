@@ -68,6 +68,15 @@ body {
 .tag-red { background: #FFF1F0; color: #DC2626; }
 .tag-gray { background: #F0F0F0; color: #666666; }
 .tag-blue { background: #E6F0FF; color: #2563EB; }
+.tag-purple { background: #F3E8FF; color: #7E22CE; }
+
+/* 新版界面使用一致的线性图标尺寸和中性色，激活态交由菜单橙色背景体现。 */
+.el-icon {
+  vertical-align: -0.125em;
+}
+.el-button .el-icon {
+  font-size: 15px;
+}
 
 /* 聊天气泡样式 */
 .chat-bubble-user {

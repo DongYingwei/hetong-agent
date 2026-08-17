@@ -48,7 +48,7 @@
         </el-table-column>
         <el-table-column label="操作" width="120" align="right" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" style="color: #049667;" @click="handleEdit(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="handleEdit(row)">
               编辑配置
             </el-button>
           </template>

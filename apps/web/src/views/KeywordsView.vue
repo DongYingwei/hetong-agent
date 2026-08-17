@@ -12,9 +12,7 @@
           重新扫描关键词
         </el-button>
         <el-button
-          type="primary"
           size="large"
-          style="background-color: #049667; border-color: #049667;"
           @click="handleCreate"
         >
           <el-icon class="mr-1"><Plus /></el-icon> 新增关键词
@@ -66,10 +64,9 @@
                   {{ row.keyword_name }} - 包含子词（共 {{ row.sub_words?.length || 0 }} 个）
                 </span>
                 <el-button
-                  type="primary"
                   link
                   size="small"
-                  style="color: #049667;"
+                  style="color: #1f1f1f;"
                   @click="openAddSubModal(row)"
                 >
                   + 添加子词
@@ -128,7 +125,7 @@
 
         <el-table-column label="子词数量" width="100" align="center">
           <template #default="{ row }">
-            <span class="text-[#049667] font-semibold">{{ row.sub_words?.length ?? row.sub_count ?? 0 }}</span> 个
+            <span class="font-semibold text-[#303133]">{{ row.sub_words?.length ?? row.sub_count ?? 0 }}</span> 个
           </template>
         </el-table-column>
 
@@ -148,10 +145,10 @@
 
         <el-table-column label="操作" width="180" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" style="color: #049667;" @click="openAddSubModal(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="openAddSubModal(row)">
               + 添加子词
             </el-button>
-            <el-button type="primary" link size="small" style="color: #049667;" @click="handleEdit(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="handleEdit(row)">
               编辑
             </el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row.id)">

@@ -7,7 +7,7 @@
           <h1 class="text-2xl font-bold text-[#1A1A1A]">菜单管理</h1>
           <p class="text-xs text-gray-500 mt-1">管理系统菜单结构、组件路由及权限标识配置</p>
         </div>
-        <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" @click="handleCreate">
+        <el-button size="large" @click="handleCreate">
           <el-icon class="mr-1"><Plus /></el-icon> 新增菜单
         </el-button>
       </div>
@@ -50,10 +50,10 @@
         </el-table-column>
         <el-table-column label="操作" width="200" align="right" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" style="color: #049667;" @click="handleEdit(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="handleEdit(row)">
               编辑
             </el-button>
-            <el-button v-if="row.type === '目录'" type="primary" link size="small" style="color: #049667;" @click="handleCreateChild(row)">
+            <el-button v-if="row.type === '目录'" link size="small" style="color: #1f1f1f;" @click="handleCreateChild(row)">
               新增子菜单
             </el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">
@@ -108,7 +108,7 @@ const menuList = ref<MenuItem[]>([
       { id: 11, name: '├ 合同台账', type: '菜单', path: '/contract/ledger', permission: 'contract:ledger', sort: 1, status: 1 },
       { id: 12, name: '├ 智能体检索', type: '菜单', path: '/contract/search', permission: 'contract:search', sort: 2, status: 1 },
       { id: 13, name: '├ 关键词管理', type: '菜单', path: '/contract/keywords', permission: 'contract:keywords', sort: 3, status: 1 },
-      { id: 14, name: '└ 合同模块', type: '菜单', path: '/contract/sections', permission: 'contract:sections', sort: 4, status: 1 },
+      { id: 14, name: '└ 模块配置', type: '菜单', path: '/contract/sections', permission: 'contract:sections', sort: 4, status: 1 },
     ],
   },
   {

@@ -7,7 +7,7 @@
           <h1 class="text-2xl font-bold text-[#1A1A1A]">用户管理</h1>
           <p class="text-xs text-gray-500 mt-1">管理系统用户账号及权限分配</p>
         </div>
-        <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" @click="handleCreate">
+        <el-button size="large" @click="handleCreate">
           <el-icon class="mr-1"><Plus /></el-icon> 新增用户
         </el-button>
       </div>
@@ -32,7 +32,7 @@
             <el-option label="禁用" :value="0" />
           </el-select>
         </div>
-        <el-button type="primary" style="background-color: #049667; border-color: #049667;" @click="handleSearch">
+        <el-button @click="handleSearch">
           <el-icon class="mr-1"><Search /></el-icon> 搜索
         </el-button>
         <el-button @click="handleReset">重置</el-button>
@@ -88,10 +88,10 @@
         </el-table-column>
         <el-table-column label="操作" width="200" align="right" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" style="color: #049667;" @click="handleEdit(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="handleEdit(row)">
               编辑
             </el-button>
-            <el-button type="primary" link size="small" style="color: #049667;" @click="handleResetPassword(row)">
+            <el-button link size="small" style="color: #1f1f1f;" @click="handleResetPassword(row)">
               重置密码
             </el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">

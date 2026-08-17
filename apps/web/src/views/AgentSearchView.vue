@@ -4,10 +4,10 @@
     <div class="w-64 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col shrink-0">
       <div class="p-4 border-b border-gray-100 flex items-center justify-between">
         <h3 class="font-bold text-gray-800 text-sm flex items-center gap-2">
-          <el-icon class="text-[#049667]"><ChatDotSquare /></el-icon>
+          <el-icon class="text-[#303133]"><ChatDotSquare /></el-icon>
           检索历史
         </h3>
-        <el-button type="primary" link size="small" style="color: #049667;" @click="handleNewChat">
+        <el-button link size="small" style="color: #1f1f1f;" @click="handleNewChat">
           <el-icon class="mr-1"><Plus /></el-icon> 新对话
         </el-button>
       </div>
@@ -19,7 +19,7 @@
           :class="[
             'p-2.5 rounded-lg text-xs cursor-pointer transition-all flex flex-col gap-1',
             activeHistoryIndex === idx
-              ? 'bg-[#E6F8F0] text-[#049667] font-medium border border-[#049667]/20'
+              ? 'bg-[#f3f4f6] text-[#303133] font-medium border border-gray-300/40'
               : 'text-gray-600 hover:bg-gray-50'
           ]"
           @click="selectHistory(idx)"
@@ -42,11 +42,11 @@
             <h2 class="text-base font-bold text-gray-800">综合检索智能体</h2>
             <span class="tag tag-green">AI 增强版</span>
           </div>
-          <p class="text-xs text-gray-500 mt-0.5">支持对全量合同台账与合同正文进行自然语言交互检索</p>
+          <p class="text-xs text-gray-500 mt-0.5">支持对全量合同文本及订单台账信息进行自然语言交互检索</p>
         </div>
         <div class="flex items-center gap-3">
           <div class="text-right font-mono text-xs text-gray-400">
-            已索引 <span class="font-bold text-[#049667]">1,247</span> 份合同及 <span class="font-bold text-[#049667]">3,568</span> 条订单
+            已索引 <span class="font-bold text-[#303133]">1,247</span> 份合同及 <span class="font-bold text-[#303133]">3,568</span> 条订单
           </div>
           <el-button type="info" plain size="small" @click="handleClearChat">清空记录</el-button>
         </div>
@@ -57,7 +57,7 @@
         <div v-for="(msg, idx) in messages" :key="idx" class="space-y-3">
           <!-- 用户消息 -->
           <div v-if="msg.role === 'user'" class="flex justify-end">
-            <div class="bg-[#049667] text-white text-xs py-2.5 px-4 rounded-2xl rounded-tr-none max-w-[80%] leading-relaxed shadow-sm whitespace-pre-wrap">
+            <div class="bg-[#303133] text-white text-xs py-2.5 px-4 rounded-2xl rounded-tr-none max-w-[80%] leading-relaxed shadow-sm whitespace-pre-wrap">
               {{ msg.content }}
             </div>
           </div>
@@ -72,7 +72,7 @@
                 <!-- Markdown 正文（剥离 SQL 块与表格，只渲染 prose） -->
                 <div class="markdown-body" v-html="renderContent(msg.content)"></div>
 
-                <div v-if="msg.process?.length" class="mt-3 rounded-lg bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                <div v-if="msg.process?.length" class="mt-3 rounded-lg bg-gray-100 px-3 py-2 text-[11px] text-gray-700">
                   <span class="font-medium">检索过程：</span>{{ msg.process.map((item) => item.label).join(' → ') }}
                 </div>
 
@@ -83,12 +83,12 @@
                         <div class="font-semibold text-[#1A1A1A]">{{ contract.contract_no }} · {{ contract.contract_name }}</div>
                         <div class="mt-1 text-gray-500">{{ contract.customer_name || '—' }} · 签订日期 {{ cellText(contract.sign_date) || '—' }}</div>
                       </div>
-                      <div class="text-right shrink-0"><div class="font-semibold text-[#049667]">{{ formatAmount(contract.amount) }}</div><span class="tag" :class="Number(contract.has_ai_keyword) === 1 ? 'tag-green' : 'tag-gray'">{{ Number(contract.has_ai_keyword) === 1 ? 'AI' : '—' }}</span></div>
+                      <div class="text-right shrink-0"><div class="font-semibold text-[#303133]">{{ formatAmount(contract.amount) }}</div><span class="tag" :class="Number(contract.has_ai_keyword) === 1 ? 'tag-green' : 'tag-gray'">{{ Number(contract.has_ai_keyword) === 1 ? 'AI' : '—' }}</span></div>
                     </div>
                     <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
                       <span v-for="module in moduleAiFlags(contract)" :key="module.name" class="tag" :class="module.hit ? 'tag-green' : 'tag-gray'">{{ module.name }}：{{ module.hit ? 'AI' : '—' }}</span>
                     </div>
-                    <details class="mt-2 text-gray-600"><summary class="cursor-pointer text-[#049667]">查看完整合同台账</summary>
+                    <details class="mt-2 text-gray-600"><summary class="cursor-pointer text-[#303133]">查看完整合同台账</summary>
                       <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
                         <template v-for="field in contractFields" :key="field"><span class="text-gray-400">{{ columnLabel(field) }}</span><span class="break-all">{{ cellText(contract[field]) || '—' }}</span></template>
                       </div>
@@ -118,7 +118,7 @@
                           :key="rIdx"
                           :class="[
                             'transition-colors',
-                            row.isSummary ? 'bg-emerald-50/70 font-semibold' : '',
+                            row.isSummary ? 'bg-gray-100 font-semibold' : '',
                             rIdx % 2 === 1 ? 'bg-gray-50/70' : 'bg-white'
                           ]"
                         >
@@ -135,8 +135,8 @@
 
                   <div v-if="msg.tableData.length > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t border-gray-200 flex items-center justify-between font-mono">
                     <span v-if="!msg.isExpanded">...共 {{ msg.tableData.length }} 条明细，当前已精简展示前 5 条</span>
-                    <span v-else class="text-emerald-700 font-semibold">✓ 已展开全量 {{ msg.tableData.length }} 条明细</span>
-                    <span class="text-[#049667] cursor-pointer font-bold hover:underline select-none" @click="msg.isExpanded = !msg.isExpanded">
+                    <span v-else class="text-gray-700 font-semibold">✓ 已展开全量 {{ msg.tableData.length }} 条明细</span>
+                    <span class="text-[#303133] cursor-pointer font-bold hover:underline select-none" @click="msg.isExpanded = !msg.isExpanded">
                       {{ msg.isExpanded ? '收起明细 ▲' : '展开查看全部明细 ▼' }}
                     </span>
                   </div>
@@ -152,7 +152,7 @@
                 <div v-if="msg.citations && msg.citations.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
                   <div class="px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600 border-b border-gray-100">依据出处</div>
                   <div v-for="(c, ci) in msg.citations" :key="ci" class="px-3 py-2 text-xs border-b border-gray-50 last:border-b-0">
-                    <div class="flex items-center gap-2 font-medium text-[#049667]">
+                    <div class="flex items-center gap-2 font-medium text-[#303133]">
                       <span>{{ c.contract_no || '—' }}</span>
                       <span class="text-gray-400">·</span>
                       <span class="text-gray-600">{{ c.field }}</span>
@@ -198,25 +198,25 @@
         <div class="flex items-center gap-2 text-xs text-gray-400 overflow-x-auto pb-1 select-none">
           <span class="shrink-0 text-gray-400">快捷检索：</span>
           <button
-            class="px-2.5 py-1 bg-gray-50 hover:bg-emerald-50 hover:text-[#049667] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
+            class="px-2.5 py-1 bg-gray-50 hover:bg-gray-200 hover:text-[#303133] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
             @click="fillQuery('服务内容包含AI智能体的合同有哪些')"
           >
             🤖 2026年AI合同
           </button>
           <button
-            class="px-2.5 py-1 bg-gray-50 hover:bg-emerald-50 hover:text-[#049667] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
+            class="px-2.5 py-1 bg-gray-50 hover:bg-gray-200 hover:text-[#303133] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
             @click="fillQuery('电力行业含AI关键词的合同金额是多少')"
           >
             ⚡ 电力行业AI金额
           </button>
           <button
-            class="px-2.5 py-1 bg-gray-50 hover:bg-emerald-50 hover:text-[#049667] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
+            class="px-2.5 py-1 bg-gray-50 hover:bg-gray-200 hover:text-[#303133] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
             @click="fillQuery('技术要求含机器学习的合同有哪些')"
           >
             🧠 机器学习相关
           </button>
           <button
-            class="px-2.5 py-1 bg-gray-50 hover:bg-emerald-50 hover:text-[#049667] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
+            class="px-2.5 py-1 bg-gray-50 hover:bg-gray-200 hover:text-[#303133] rounded-md transition-colors shrink-0 text-gray-600 border border-gray-200/60"
             @click="fillQuery('含AI关键词的合同有哪些，总金额是多少')"
           >
             📦 AI合同总金额
