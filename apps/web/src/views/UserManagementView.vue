@@ -216,7 +216,7 @@ function handleResetPassword(row: any) {
     if (row.id) {
       await userApi.resetPassword(row.id);
     }
-    ElMessage.success('重置成功');
+    ElMessage.success('重置成功，新密码：howso123');
   });
 }
 

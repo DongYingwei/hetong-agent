@@ -405,6 +405,10 @@ async function handleSubmit() {
       return;
     }
   }
+  if (isEdit.value && form.password && form.password !== form.confirmPassword) {
+    ElMessage.error('两次输入的密码不一致');
+    return;
+  }
   if (!form.realName.trim()) {
     ElMessage.error('用户姓名不能为空');
     return;
@@ -440,7 +444,7 @@ async function handleSubmit() {
     if (isEdit.value) {
       const res = await userApi.update(payload);
       if (res.code === 200) {
-        ElMessage.success('编辑成功');
+        ElMessage.success(form.password ? `编辑成功，新密码：${form.password}` : '编辑成功');
         visible.value = false;
         emit('success');
       } else {
@@ -449,7 +453,7 @@ async function handleSubmit() {
     } else {
       const res = await userApi.create(payload);
       if (res.code === 200) {
-        ElMessage.success('新增成功');
+        ElMessage.success(`新增成功，初始密码：${form.password}`);
         visible.value = false;
         emit('success');
       } else {
