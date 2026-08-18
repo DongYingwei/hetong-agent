@@ -11,7 +11,7 @@ INSERT INTO sys_menu (name, type, parent_id, path, permission, sort, status)
 SELECT v.name, v.type, COALESCE(parent.id, 0), v.path, v.permission, v.sort, 1
 FROM (VALUES
   ('合同台账', '菜单', NULL::text, '/ledger', 'contract:ledger', 1),
-  ('订单台账', '菜单', NULL::text, '/orders', 'contract:*', 2),
+  ('订单台账', '菜单', NULL::text, '/orders', 'contract:orders', 2),
   ('综合检索', '菜单', NULL::text, '/agent-search', 'contract:search', 3),
   ('关键词管理', '菜单', NULL::text, '/keywords', 'contract:keywords', 4),
   ('模块配置', '菜单', NULL::text, '/sections', 'contract:sections', 5),
