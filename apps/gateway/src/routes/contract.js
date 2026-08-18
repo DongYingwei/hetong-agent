@@ -59,7 +59,9 @@ async function attachModuleHits(rows) {
 router.get('/modules', async (ctx) => {
   const modules = await queryRead(
     `SELECT module_key, name, anchor_names, recognition_rule, sort_order, scope
-       FROM contract_modules WHERE enabled = TRUE ORDER BY sort_order, module_key`,
+       FROM contract_modules
+      WHERE enabled = TRUE AND scope IN ('contract', 'all')
+      ORDER BY sort_order, module_key`,
   );
   ctx.success({ list: modules });
 });
@@ -70,7 +72,7 @@ router.get('/modules', async (ctx) => {
 router.get('/list', async (ctx) => {
   const page = parseInt(ctx.query.page || '1', 10);
   const pageSize = parseInt(ctx.query.pageSize || '10', 10);
-  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType, roleAi = '', serviceAi = '', techAi = '', staffAi = '', roleKeywords = '', serviceKeywords = '', techKeywords = '', staffKeywords = '' } = ctx.query;
+  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType, moduleFilters = '' } = ctx.query;
 
   const offset = (page - 1) * pageSize;
   let whereSql = 'WHERE 1=1';
@@ -102,17 +104,43 @@ router.get('/list', async (ctx) => {
     }
     whereSql += ')';
   }
-  for (const [key, enabled, selected] of [['role', roleAi, roleKeywords], ['service', serviceAi, serviceKeywords], ['tech', techAi, techKeywords], ['staff', staffAi, staffKeywords]]) {
-    const terms = String(selected || '').split('\u001f').map((item) => item.trim()).filter(Boolean);
-    if (String(enabled) === '1' || terms.length) {
-      const conditions = ['cm.contract_id = contracts.id', `cm.module_key = $${++n}`, 'cm.hit = 1'];
-      params.push(key);
-      if (terms.length) {
-        conditions.push(`cm.keywords ILIKE ANY($${++n}::text[])`);
-        params.push(terms.map((term) => `%${term}%`));
-      }
-      whereSql += ` AND EXISTS (SELECT 1 FROM contract_module_hits cm WHERE ${conditions.join(' AND ')})`;
+  let parsedModuleFilters = [];
+  if (moduleFilters) {
+    try {
+      parsedModuleFilters = JSON.parse(String(moduleFilters));
+    } catch {
+      ctx.throw(400, '模块筛选参数格式错误');
     }
+    if (!Array.isArray(parsedModuleFilters)) ctx.throw(400, '模块筛选参数格式错误');
+  }
+  const requestedModuleKeys = parsedModuleFilters
+    .map((filter) => String(filter?.module_key || '').trim())
+    .filter(Boolean);
+  if (requestedModuleKeys.length) {
+    const eligibleModules = await queryRead(
+      `SELECT module_key FROM contract_modules
+        WHERE enabled = TRUE AND scope IN ('contract', 'all')
+          AND module_key = ANY($1::text[])`,
+      [requestedModuleKeys],
+    );
+    const eligibleKeys = new Set(eligibleModules.map((module) => module.module_key));
+    if (requestedModuleKeys.some((moduleKey) => !eligibleKeys.has(moduleKey))) {
+      ctx.throw(400, '筛选模块不存在、已停用或不适用于合同');
+    }
+  }
+  for (const filter of parsedModuleFilters) {
+    const moduleKey = String(filter?.module_key || '').trim();
+    const terms = Array.isArray(filter?.keywords)
+      ? filter.keywords.map((term) => String(term).trim()).filter(Boolean)
+      : [];
+    if (!moduleKey) ctx.throw(400, '模块筛选缺少模块标识');
+    const conditions = ['cm.contract_id = contracts.id', `cm.module_key = $${++n}`, 'cm.hit = 1'];
+    params.push(moduleKey);
+    if (terms.length) {
+      conditions.push(`cm.keywords ILIKE ANY($${++n}::text[])`);
+      params.push(terms.map((term) => `%${term}%`));
+    }
+    whereSql += ` AND EXISTS (SELECT 1 FROM contract_module_hits cm WHERE ${conditions.join(' AND ')})`;
   }
 
   const fromSql = 'FROM contracts LEFT JOIN contract_manual_reviews cr ON cr.contract_id=contracts.id';

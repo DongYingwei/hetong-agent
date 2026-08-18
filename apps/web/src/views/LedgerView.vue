@@ -30,10 +30,10 @@
           </template>
         </el-input>
 
-        <el-select v-model="filters.verifyStatus" placeholder="维护状态" clearable style="width: 130px">
+        <el-select v-model="filters.verifyStatus" placeholder="核对状态" clearable style="width: 130px">
           <el-option v-for="item in dictStore.dictMap.verify_status" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <el-select v-for="module in modules.filter((m) => ['role','service','tech','staff'].includes(m.module_key))" :key="module.module_key" v-model="moduleFilters[module.module_key]" :placeholder="module.name" clearable style="width: 140px">
+        <el-select v-for="module in modules" :key="module.module_key" v-model="moduleFilters[module.module_key]" :placeholder="module.name" clearable style="width: 140px">
           <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-button type="primary" @click="loadData">查询</el-button>
@@ -202,6 +202,7 @@ import { keywordApi, type KeywordItem } from '../api/keywordApi';
 import { useDictStore } from '../stores/dictStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { exportFullContractLedgerExcel } from '../utils/excelExporter';
+import { buildModuleFilters, hasModuleAiHit } from '../utils/moduleAi';
 import type { ContractLedger } from '../types';
 import ImportContractModal from '../components/modals/ImportContractModal.vue';
 
@@ -223,16 +224,18 @@ const filters = reactive({
   contractType: '',
   hasAiKeyword: '',
   verifyStatus: '',
-  roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
-const moduleFilters = reactive<Record<string, string>>({ role: '', service: '', tech: '', staff: '' });
+const moduleFilters = reactive<Record<string, string>>({});
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
 onMounted(async () => {
   try {
     const res = await contractApi.getModules();
-    if (res.code === 200) modules.value = res.data.list;
+    if (res.code === 200) {
+      modules.value = res.data.list;
+      modules.value.forEach((module) => { moduleFilters[module.module_key] ??= ''; });
+    }
     const keywords = await keywordApi.getList({ page: 1, pageSize: 200 });
     if (keywords.code === 200) {
       keywords.data.list.forEach((item: KeywordItem) => keywordTerms.set(item.keyword_name, [item.keyword_name, ...(item.sub_words || [])]));
@@ -254,7 +257,7 @@ async function loadData() {
       contractType: filters.contractType,
       hasAiKeyword: filters.hasAiKeyword,
       verifyStatus: filters.verifyStatus,
-      roleKeywords: expandKeyword(moduleFilters.role), serviceKeywords: expandKeyword(moduleFilters.service), techKeywords: expandKeyword(moduleFilters.tech), staffKeywords: expandKeyword(moduleFilters.staff),
+      moduleFilters: buildModuleFilters(moduleFilters, keywordTerms),
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -264,22 +267,19 @@ async function loadData() {
     loading.value = false;
   }
 }
-function expandKeyword(value: string) { return (keywordTerms.get(value) || (value ? [value] : [])).join('\u001f'); }
-
 function handleReset() {
   filters.keyword = '';
   filters.contractStatus = '';
   filters.contractType = '';
   filters.hasAiKeyword = '';
   filters.verifyStatus = '';
-  moduleFilters.role = ''; moduleFilters.service = ''; moduleFilters.tech = ''; moduleFilters.staff = '';
+  Object.keys(moduleFilters).forEach((key) => { moduleFilters[key] = ''; });
   page.value = 1;
   loadData();
 }
 
 function moduleHitText(row: ContractLedger, moduleKey: string): string {
-  const hit = row.module_hits?.find((item) => item.module_key === moduleKey && item.hit === 1);
-  return hit?.keywords || (hit ? '命中' : '');
+  return hasModuleAiHit(row, moduleKey) ? 'AI' : '';
 }
 
 function goToDetail(id: number) {

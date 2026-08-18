@@ -15,8 +15,8 @@ export const contractApi = {
     verifyStatus?: number | string;
     moduleKey?: string;
     moduleKeyword?: string;
-    roleAi?: string; serviceAi?: string; techAi?: string; staffAi?: string;
-    roleKeywords?: string; serviceKeywords?: string; techKeywords?: string; staffKeywords?: string;
+    /** JSON: [{ module_key, keywords }], 配置驱动的模块筛选（各模块之间取 AND）。 */
+    moduleFilters?: string;
   }): Promise<ApiResponse<PageResult<ContractLedger>>> {
     return request.get('/contract/list', { params });
   },
@@ -73,6 +73,7 @@ export interface ContractModule {
   anchor_names?: string[];
   recognition_rule?: string | null;
   sort_order?: number;
+  scope?: 'contract' | 'order' | 'all';
 }
 
 export interface ContractKeywordHit {
