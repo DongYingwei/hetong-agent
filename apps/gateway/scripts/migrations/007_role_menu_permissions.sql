@@ -12,7 +12,7 @@ SELECT v.name, v.type, COALESCE(parent.id, 0), v.path, v.permission, v.sort, 1
 FROM (VALUES
   ('合同管理', '目录', NULL::text, '/contract', '', 1),
   ('合同台账', '菜单', '/contract', '/ledger', 'contract:ledger', 1),
-  ('订单台账', '菜单', '/contract', '/orders', 'order:ledger', 2),
+  ('订单台账', '菜单', '/contract', '/orders', 'contract:*', 2),
   ('综合检索', '菜单', '/contract', '/agent-search', 'contract:search', 3),
   ('关键词管理', '菜单', '/contract', '/keywords', 'contract:keywords', 4),
   ('模块配置', '菜单', '/contract', '/sections', 'contract:sections', 5),
