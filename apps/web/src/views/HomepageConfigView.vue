@@ -7,9 +7,9 @@
           <h1 class="text-2xl font-bold text-[#1A1A1A]">首页配置</h1>
           <p class="text-xs text-gray-500 mt-1">配置各角色/用户登录后的默认首页路由与首页组件</p>
         </div>
-        <!-- <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" @click="handleCreate">
+        <el-button type="primary" size="large" style="background-color: #049667; border-color: #049667;" @click="handleCreate">
           <el-icon class="mr-1"><Plus /></el-icon> 新增首页配置
-        </el-button> -->
+        </el-button>
       </div>
     </div>
 
@@ -66,8 +66,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { Plus } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import { homepageApi } from '../api';
 import HomepageConfigModal from '../components/modals/HomepageConfigModal.vue';
 
 interface HomepageItem {
@@ -84,13 +86,29 @@ interface HomepageItem {
 const showModal = ref(false);
 const currentEditData = ref<HomepageItem | null>(null);
 
-const roleHomepageList = ref<HomepageItem[]>([
-  { id: 1, relationType: '角色', roleName: '中兴管理员', route: '/attendance/dashboard', component: 'attendance/dashboard/index', description: '考勤管理看板', priority: 0, status: 1 },
-  { id: 2, relationType: '角色', roleName: '管理员', route: '/contract/ledger', component: 'contract/Ledger/index', description: '合同台账', priority: 1, status: 1 },
-  { id: 3, relationType: '角色', roleName: '合同专员', route: '/contract/ledger', component: 'contract/Ledger/index', description: '合同台账', priority: 2, status: 1 },
-  { id: 4, relationType: '用户', roleName: '张三 (zhangsan)', route: '/contract/search', component: 'contract/Search/index', description: '智能体检索', priority: 1, status: 1 },
-  { id: 5, relationType: '全局默认', roleName: '全局默认首页', route: '/contract/ledger', component: 'contract/Ledger/index', description: '全员系统默认首页', priority: 99, status: 1 },
-]);
+const roleHomepageList = ref<HomepageItem[]>([]);
+
+async function loadData() {
+  try {
+    const res = await homepageApi.getList();
+    if (res.code === 200) {
+      roleHomepageList.value = (res.data || []).map((item: any) => ({
+        id: item.id,
+        relationType: item.relation_type,
+        roleName: item.target_name || (item.relation_type === '全局默认' ? '全局默认首页' : ''),
+        route: item.route,
+        component: item.component,
+        description: '',
+        priority: item.priority,
+        status: item.status,
+      }));
+    }
+  } catch {
+    roleHomepageList.value = [];
+  }
+}
+
+onMounted(loadData);
 
 function handleCreate() {
   currentEditData.value = null;
@@ -103,6 +121,6 @@ function handleEdit(row: HomepageItem) {
 }
 
 function handleModalSuccess() {
-  // refresh list
+  loadData();
 }
 </script>

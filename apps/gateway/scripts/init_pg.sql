@@ -76,6 +76,22 @@ CREATE TABLE IF NOT EXISTS sys_menu (
   delete_status SMALLINT     NOT NULL DEFAULT 0
 );
 
+-- 首页配置：关联角色、用户或全局默认首页；不写入演示用户配置。
+CREATE TABLE IF NOT EXISTS sys_homepage_config (
+  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  relation_type VARCHAR(20) NOT NULL CHECK (relation_type IN ('角色', '用户', '全局默认')),
+  target_name VARCHAR(200) NOT NULL DEFAULT '',
+  route VARCHAR(255) NOT NULL,
+  component VARCHAR(255) NOT NULL,
+  priority INTEGER NOT NULL DEFAULT 0,
+  status SMALLINT NOT NULL DEFAULT 1 CHECK (status IN (0, 1)),
+  create_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+  update_time TIMESTAMPTZ NOT NULL DEFAULT now(),
+  delete_status SMALLINT NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_sys_homepage_config_active
+  ON sys_homepage_config (delete_status, status, priority, id);
+
 -- 2. 数据字典表
 CREATE TABLE IF NOT EXISTS sys_dict (
   id          INT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -160,7 +176,7 @@ CREATE TABLE IF NOT EXISTS contract_history (
 DO $$
 DECLARE t TEXT;
 BEGIN
-  FOREACH t IN ARRAY ARRAY['sys_user','sys_role','sys_menu','sys_dict','contract_ledger','contract_keyword','contract_section'] LOOP
+  FOREACH t IN ARRAY ARRAY['sys_user','sys_role','sys_menu','sys_homepage_config','sys_dict','contract_ledger','contract_keyword','contract_section'] LOOP
     EXECUTE format('DROP TRIGGER IF EXISTS trg_%1$s_upd ON %1$s', t);
     EXECUTE format('CREATE TRIGGER trg_%1$s_upd BEFORE UPDATE ON %1$s FOR EACH ROW EXECUTE FUNCTION set_update_time()', t);
   END LOOP;

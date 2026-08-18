@@ -150,7 +150,7 @@
 import { ref, reactive, watch } from 'vue';
 import { Close } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { userApi } from '../../api';
+import { homepageApi, roleApi, userApi } from '../../api';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -166,15 +166,8 @@ const loadingUsers = ref(false);
 const showRolePicker = ref(false);
 const showUserPicker = ref(false);
 
-// 角色表数据 (来自于系统角色管理列表数据)
-const roleList = ref([
-  { id: 1, name: '中兴管理员', code: 'zx_admin' },
-  { id: 2, name: '管理员', code: 'admin' },
-  { id: 3, name: '合同专员', code: 'contract:specialist' },
-  { id: 4, name: '法务人员', code: 'legal:staff' },
-  { id: 5, name: '部门负责人', code: 'dept:leader' },
-  { id: 6, name: '高管', code: 'executive' },
-]);
+// 角色和用户均从系统管理实时读取，不保留演示数据。
+const roleList = ref<any[]>([]);
 
 // 动态调取的 sys_user 用户表数据
 const userList = ref<any[]>([]);
@@ -182,7 +175,7 @@ const userList = ref<any[]>([]);
 const form = reactive({
   id: undefined as number | undefined,
   relationType: '角色' as '角色' | '用户' | '全局默认',
-  targetName: '中兴管理员',
+  targetName: '',
   route: '/contract/ledger',
   component: 'contract/Ledger/index',
   priority: 0,
@@ -211,7 +204,7 @@ watch(() => props.editData, (val) => {
     isEdit.value = false;
     form.id = undefined;
     form.relationType = '角色';
-    form.targetName = '中兴管理员';
+    form.targetName = '';
     form.route = '/contract/ledger';
     form.component = 'contract/Ledger/index';
     form.priority = 0;
@@ -229,8 +222,17 @@ function handleTypeChange(type: '角色' | '用户' | '全局默认') {
   }
 }
 
-function openRolePicker() {
+async function openRolePicker() {
   showRolePicker.value = true;
+  try {
+    const res = await roleApi.getList();
+    if (res.code === 200) {
+      roleList.value = (res.data || []).map((role: any) => ({ id: role.id, name: role.role_name, code: role.role_code }));
+    }
+  } catch {
+    roleList.value = [];
+    ElMessage.error('读取角色列表失败');
+  }
 }
 
 async function openUserPicker() {
@@ -242,13 +244,8 @@ async function openUserPicker() {
       userList.value = res.data.list;
     }
   } catch (e) {
-    // fallback test users if backend disconnected
-    userList.value = [
-      { id: 1, username: 'admin', real_name: '张三' },
-      { id: 2, username: 'user', real_name: '李四' },
-      { id: 3, username: 'wangwu', real_name: '王五' },
-      { id: 4, username: 'zhaoliu', real_name: '赵六' },
-    ];
+    userList.value = [];
+    ElMessage.error('读取用户列表失败');
   } finally {
     loadingUsers.value = false;
   }
@@ -280,6 +277,18 @@ async function handleSubmit() {
 
   loading.value = true;
   try {
+    const payload = {
+      relationType: form.relationType,
+      targetName: form.targetName,
+      route: form.route.trim(),
+      component: form.component.trim(),
+      priority: form.priority,
+      status: form.enabled ? 1 : 0,
+    };
+    const res = isEdit.value
+      ? await homepageApi.update({ ...payload, id: form.id })
+      : await homepageApi.create(payload);
+    if (res.code !== 200) return;
     ElMessage.success(isEdit.value ? '编辑成功' : '新增成功');
     visible.value = false;
     emit('success');
