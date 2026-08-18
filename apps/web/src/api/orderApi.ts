@@ -11,6 +11,7 @@ export const orderApi = {
     serviceAi?: string;
     techAi?: string;
     staffAi?: string;
+    roleKeywords?: string; serviceKeywords?: string; techKeywords?: string; staffKeywords?: string;
   }): Promise<ApiResponse<PageResult<OrderLedger>>> {
     return request.get('/order/list', { params });
   },

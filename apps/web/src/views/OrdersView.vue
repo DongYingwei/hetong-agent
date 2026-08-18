@@ -29,30 +29,30 @@
         </el-input>
 
         <el-select
-          v-model="filters.roleAi"
+          v-model="moduleKeywords.role"
           placeholder="项目名称"
-          clearable
+          clearable multiple collapse-tags
           style="width: 140px"
           @change="loadData"
         >
-          <el-option label="AI" value="1" />
+          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
 
         <el-select
-          v-model="filters.serviceAi"
+          v-model="moduleKeywords.service"
           placeholder="服务内容"
-          clearable
+          clearable multiple collapse-tags
           style="width: 140px"
           @change="loadData"
         >
-          <el-option label="AI" value="1" />
+          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
 
-        <el-select v-model="filters.techAi" placeholder="技术要求" clearable style="width: 140px" @change="loadData">
-          <el-option label="AI" value="1" />
+        <el-select v-model="moduleKeywords.tech" placeholder="技术要求" clearable multiple collapse-tags style="width: 140px" @change="loadData">
+          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <el-select v-model="filters.staffAi" placeholder="人员要求" clearable style="width: 140px" @change="loadData">
-          <el-option label="AI" value="1" />
+        <el-select v-model="moduleKeywords.staff" placeholder="人员要求" clearable multiple collapse-tags style="width: 140px" @change="loadData">
+          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
 
         <el-button type="primary" @click="loadData">查询</el-button>
@@ -175,7 +175,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { orderApi } from '../api';
+import { orderApi, keywordApi, type KeywordItem } from '../api';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import type { OrderLedger } from '../types';
 import OrderDetailModal from '../components/modals/OrderDetailModal.vue';
@@ -203,10 +203,21 @@ const filters = reactive({
   keyword: '',
   roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
+const moduleKeywords = reactive<Record<string, string[]>>({ role: [], service: [], tech: [], staff: [] });
+const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
+const keywordTerms = new Map<string, string[]>();
 
 onMounted(() => {
+  void loadKeywords();
   loadData();
 });
+async function loadKeywords() {
+  const res = await keywordApi.getList({ page: 1, pageSize: 200 });
+  if (res.code === 200) {
+    res.data.list.forEach((item: KeywordItem) => keywordTerms.set(item.keyword_name, [item.keyword_name, ...(item.sub_words || [])]));
+    keywordOptions.value = res.data.list.map((item: KeywordItem) => ({ label: item.keyword_name, value: item.keyword_name }));
+  }
+}
 
 async function loadData() {
   loading.value = true;
@@ -217,6 +228,7 @@ async function loadData() {
       keyword: filters.keyword,
       roleAi: filters.roleAi, serviceAi: filters.serviceAi,
       techAi: filters.techAi, staffAi: filters.staffAi,
+      roleKeywords: expandKeywords(moduleKeywords.role), serviceKeywords: expandKeywords(moduleKeywords.service), techKeywords: expandKeywords(moduleKeywords.tech), staffKeywords: expandKeywords(moduleKeywords.staff),
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -226,10 +238,12 @@ async function loadData() {
     loading.value = false;
   }
 }
+function expandKeywords(values: string[]) { return [...new Set(values.flatMap((value) => keywordTerms.get(value) || [value]))].join('\u001f'); }
 
 function handleReset() {
   filters.keyword = '';
   filters.roleAi = ''; filters.serviceAi = ''; filters.techAi = ''; filters.staffAi = '';
+  moduleKeywords.role = []; moduleKeywords.service = []; moduleKeywords.tech = []; moduleKeywords.staff = [];
   page.value = 1;
   loadData();
 }

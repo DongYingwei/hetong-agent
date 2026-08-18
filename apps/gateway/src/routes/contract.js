@@ -70,7 +70,7 @@ router.get('/modules', async (ctx) => {
 router.get('/list', async (ctx) => {
   const page = parseInt(ctx.query.page || '1', 10);
   const pageSize = parseInt(ctx.query.pageSize || '10', 10);
-  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType, roleAi = '', serviceAi = '', techAi = '', staffAi = '' } = ctx.query;
+  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType, roleAi = '', serviceAi = '', techAi = '', staffAi = '', roleKeywords = '', serviceKeywords = '', techKeywords = '', staffKeywords = '' } = ctx.query;
 
   const offset = (page - 1) * pageSize;
   let whereSql = 'WHERE 1=1';
@@ -102,10 +102,16 @@ router.get('/list', async (ctx) => {
     }
     whereSql += ')';
   }
-  for (const [key, enabled] of [['role', roleAi], ['service', serviceAi], ['tech', techAi], ['staff', staffAi]]) {
-    if (String(enabled) === '1') {
-      whereSql += ` AND EXISTS (SELECT 1 FROM contract_module_hits cm WHERE cm.contract_id=contracts.id AND cm.module_key=$${++n} AND cm.hit=1)`;
+  for (const [key, enabled, selected] of [['role', roleAi, roleKeywords], ['service', serviceAi, serviceKeywords], ['tech', techAi, techKeywords], ['staff', staffAi, staffKeywords]]) {
+    const terms = String(selected || '').split('\u001f').map((item) => item.trim()).filter(Boolean);
+    if (String(enabled) === '1' || terms.length) {
+      const conditions = ['cm.contract_id = contracts.id', `cm.module_key = $${++n}`, 'cm.hit = 1'];
       params.push(key);
+      if (terms.length) {
+        conditions.push(`cm.keywords ILIKE ANY($${++n}::text[])`);
+        params.push(terms.map((term) => `%${term}%`));
+      }
+      whereSql += ` AND EXISTS (SELECT 1 FROM contract_module_hits cm WHERE ${conditions.join(' AND ')})`;
     }
   }
 

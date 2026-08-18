@@ -17,17 +17,23 @@ async function attachModuleHits(rows) {
 router.get('/list', async (ctx) => {
   const page = Math.max(parseInt(ctx.query.page || '1', 10), 1);
   const pageSize = Math.min(Math.max(parseInt(ctx.query.pageSize || '10', 10), 1), 200);
-  const { keyword = '', roleAi = '', serviceAi = '', techAi = '', staffAi = '' } = ctx.query;
+  const { keyword = '', roleAi = '', serviceAi = '', techAi = '', staffAi = '', roleKeywords = '', serviceKeywords = '', techKeywords = '', staffKeywords = '' } = ctx.query;
   const params = [];
   let where = 'WHERE delete_status=0';
   if (keyword.trim()) {
     params.push(`%${keyword.trim()}%`); const n = params.length;
     where += ` AND (order_no ILIKE $${n} OR order_name ILIKE $${n} OR project_no ILIKE $${n} OR customer_name ILIKE $${n})`;
   }
-  for (const [moduleKey, enabled] of [['role', roleAi], ['service', serviceAi], ['tech', techAi], ['staff', staffAi]]) {
-    if (String(enabled) === '1') {
+  for (const [moduleKey, enabled, selected] of [['role', roleAi, roleKeywords], ['service', serviceAi, serviceKeywords], ['tech', techAi, techKeywords], ['staff', staffAi, staffKeywords]]) {
+    const terms = String(selected || '').split('\u001f').map((item) => item.trim()).filter(Boolean);
+    if (String(enabled) === '1' || terms.length) {
       params.push(moduleKey);
-      where += ` AND EXISTS (SELECT 1 FROM order_module_hits omh WHERE omh.order_id=sys_order.id AND omh.module_key=$${params.length} AND omh.hit=1)`;
+      const conditions = ['omh.order_id = sys_order.id', `omh.module_key = $${params.length}`, 'omh.hit = 1'];
+      if (terms.length) {
+        params.push(terms.map((term) => `%${term}%`));
+        conditions.push(`omh.keywords ILIKE ANY($${params.length}::text[])`);
+      }
+      where += ` AND EXISTS (SELECT 1 FROM order_module_hits omh WHERE ${conditions.join(' AND ')})`;
     }
   }
   const [{ total }] = await query(`SELECT COUNT(*)::int AS total FROM sys_order ${where}`, params);

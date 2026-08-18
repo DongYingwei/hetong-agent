@@ -33,8 +33,8 @@
         <el-select v-model="filters.verifyStatus" placeholder="维护状态" clearable style="width: 130px">
           <el-option v-for="item in dictStore.dictMap.verify_status" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <el-select v-for="module in modules.filter((m) => ['role','service','tech','staff'].includes(m.module_key))" :key="module.module_key" v-model="moduleFilters[module.module_key]" :placeholder="module.name" clearable style="width: 140px">
-          <el-option label="AI" value="1" />
+        <el-select v-for="module in modules.filter((m) => ['role','service','tech','staff'].includes(m.module_key))" :key="module.module_key" v-model="moduleKeywords[module.module_key]" :placeholder="module.name" clearable multiple collapse-tags style="width: 150px">
+          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-button type="primary" @click="loadData">查询</el-button>
         <el-button @click="handleReset">重置</el-button>
@@ -198,6 +198,7 @@ import { useRouter } from 'vue-router';
 import { Search, Upload, Download } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { contractApi, type ContractModule } from '../api/contractApi';
+import { keywordApi, type KeywordItem } from '../api/keywordApi';
 import { useDictStore } from '../stores/dictStore';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { exportFullContractLedgerExcel } from '../utils/excelExporter';
@@ -224,12 +225,19 @@ const filters = reactive({
   verifyStatus: '',
   roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
-const moduleFilters = reactive<Record<string, string>>({ role: '', service: '', tech: '', staff: '' });
+const moduleKeywords = reactive<Record<string, string[]>>({ role: [], service: [], tech: [], staff: [] });
+const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
+const keywordTerms = new Map<string, string[]>();
 
 onMounted(async () => {
   try {
     const res = await contractApi.getModules();
     if (res.code === 200) modules.value = res.data.list;
+    const keywords = await keywordApi.getList({ page: 1, pageSize: 200 });
+    if (keywords.code === 200) {
+      keywords.data.list.forEach((item: KeywordItem) => keywordTerms.set(item.keyword_name, [item.keyword_name, ...(item.sub_words || [])]));
+      keywordOptions.value = keywords.data.list.map((item: KeywordItem) => ({ label: item.keyword_name, value: item.keyword_name }));
+    }
   } finally {
     loadData();
   }
@@ -246,7 +254,7 @@ async function loadData() {
       contractType: filters.contractType,
       hasAiKeyword: filters.hasAiKeyword,
       verifyStatus: filters.verifyStatus,
-      roleAi: moduleFilters.role, serviceAi: moduleFilters.service, techAi: moduleFilters.tech, staffAi: moduleFilters.staff,
+      roleKeywords: expandKeywords(moduleKeywords.role), serviceKeywords: expandKeywords(moduleKeywords.service), techKeywords: expandKeywords(moduleKeywords.tech), staffKeywords: expandKeywords(moduleKeywords.staff),
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -256,6 +264,7 @@ async function loadData() {
     loading.value = false;
   }
 }
+function expandKeywords(values: string[]) { return [...new Set(values.flatMap((value) => keywordTerms.get(value) || [value]))].join('\u001f'); }
 
 function handleReset() {
   filters.keyword = '';
@@ -263,7 +272,7 @@ function handleReset() {
   filters.contractType = '';
   filters.hasAiKeyword = '';
   filters.verifyStatus = '';
-  moduleFilters.role = ''; moduleFilters.service = ''; moduleFilters.tech = ''; moduleFilters.staff = '';
+  moduleKeywords.role = []; moduleKeywords.service = []; moduleKeywords.tech = []; moduleKeywords.staff = [];
   page.value = 1;
   loadData();
 }

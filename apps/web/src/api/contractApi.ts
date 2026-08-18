@@ -16,6 +16,7 @@ export const contractApi = {
     moduleKey?: string;
     moduleKeyword?: string;
     roleAi?: string; serviceAi?: string; techAi?: string; staffAi?: string;
+    roleKeywords?: string; serviceKeywords?: string; techKeywords?: string; staffKeywords?: string;
   }): Promise<ApiResponse<PageResult<ContractLedger>>> {
     return request.get('/contract/list', { params });
   },
