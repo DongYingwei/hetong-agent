@@ -76,24 +76,15 @@
                   <span class="font-medium">检索过程：</span>{{ msg.process.map((item) => item.label).join(' → ') }}
                 </div>
 
-                <div v-if="msg.contracts?.length" class="mt-3 space-y-2">
-                  <div v-for="contract in msg.contracts" :key="String(contract.id)" class="rounded-lg border border-gray-200 bg-white p-3">
-                    <div class="flex items-start justify-between gap-3">
-                      <div>
-                        <div class="font-semibold text-[#1A1A1A]">{{ contract.contract_no }} · {{ contract.contract_name }}</div>
-                        <div class="mt-1 text-gray-500">{{ contract.customer_name || '—' }} · 签订日期 {{ cellText(contract.sign_date) || '—' }}</div>
-                      </div>
-                      <div class="text-right shrink-0"><div class="font-semibold text-[#303133]">{{ formatAmount(contract.amount) }}</div><span class="tag" :class="Number(contract.has_ai_keyword) === 1 ? 'tag-green' : 'tag-gray'">{{ Number(contract.has_ai_keyword) === 1 ? 'AI' : '—' }}</span></div>
-                    </div>
-                    <div class="mt-2 flex flex-wrap gap-1.5 text-[11px]">
-                      <span v-for="module in moduleAiFlags(contract)" :key="module.name" class="tag" :class="module.hit ? 'tag-green' : 'tag-gray'">{{ module.name }}：{{ module.hit ? 'AI' : '—' }}</span>
-                    </div>
-                    <details class="mt-2 text-gray-600"><summary class="cursor-pointer text-[#303133]">查看完整合同台账</summary>
-                      <div class="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-                        <template v-for="field in contractFields" :key="field"><span class="text-gray-400">{{ columnLabel(field) }}</span><span class="break-all">{{ cellText(contract[field]) || '—' }}</span></template>
-                      </div>
-                    </details>
+                <div v-if="ledgerRows(msg).length" class="mt-3 border border-gray-200 rounded-lg overflow-x-auto">
+                  <div :class="msg.isExpanded ? 'max-h-[360px] overflow-y-auto' : ''">
+                    <table class="w-full text-xs whitespace-nowrap"><thead class="sticky top-0 z-10 bg-gray-100"><tr>
+                      <th v-for="col in ledgerColumns(msg)" :key="col.key" class="px-3 py-2 text-left font-medium">{{ col.label }}</th>
+                    </tr></thead><tbody><tr v-for="(row,index) in (msg.isExpanded ? ledgerRows(msg) : ledgerRows(msg).slice(0,5))" :key="row.id || index" :class="index%2?'bg-gray-50':'bg-white'">
+                      <td v-for="col in ledgerColumns(msg)" :key="col.key" class="px-3 py-2">{{ ledgerCell(row,col.key) }}</td>
+                    </tr></tbody></table>
                   </div>
+                  <div v-if="ledgerRows(msg).length > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t">{{ msg.isExpanded ? '已展开全部明细' : `共 ${ledgerRows(msg).length} 条，展示前 5 条` }} <span class="float-right cursor-pointer font-bold" @click="toggleDetails(msg)">{{ msg.isExpanded ? '收起明细 ▲' : '展开查看全部明细 ▼' }}</span></div>
                 </div>
                   <div v-if="msg.summary" class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
                     {{ msg.summary.scope }}：共 {{ msg.entity === 'order' ? msg.summary.order_count : msg.summary.contract_count }} 条{{ msg.entity === 'order' ? '订单' : '合同' }}；金额合计 {{ formatAmount(msg.summary.total_amount) }}；{{ msg.summary.missing_amount_count }} 条未填写金额，未计入合计。
@@ -102,7 +93,7 @@
                   <div class="flex gap-2"><el-button size="small" @click="handleExportResult(msg)"><el-icon class="mr-1"><Download /></el-icon>导出{{ msg.entity === 'order' ? '订单' : '合同' }}台账</el-button></div>
 
                 <!-- 结构化结果表格（列名随 SQL 动态变化） -->
-                <div v-if="msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
+                <div v-if="!ledgerRows(msg).length && msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
                   <div :class="msg.isExpanded ? 'max-h-[360px] overflow-y-auto' : ''">
                     <table class="w-full text-xs">
                       <thead class="sticky top-0 z-10 bg-gray-100 shadow-sm">
@@ -293,6 +284,20 @@ const COLUMN_LABELS: Record<string, string> = {
   project_name: '项目名称',
 };
 const contractFields = ['assessment_line', 'bid_no', 'related_main_no', 'framework_alias', 'customer_contract_no', 'signing_entity', 'contract_type', 'start_date', 'end_date', 'amount_type', 'tax_rate', 'settlement_terms', 'post_eval', 'deposit_amount', 'deposit_refund', 'arbitration', 'authorizer', 'status'];
+const CONTRACT_LEDGER_COLUMNS = [
+  ['contract_no','合同号'],['customer_name','客户名称'],['contract_name','合同名称'],['contract_type','合同类型'],['sign_date','签约时间'],['amount','合同金额(含税)'],['assessment_line','考核线'],['contract_status','合同状态'],['verify_status','核对状态'],['warning_status','断档预警'],['role','项目名称'],['service','服务内容'],['tech','技术要求'],['staff','人员需求'],
+];
+const ORDER_LEDGER_COLUMNS = [
+  ['project_no','项目编号'],['project_name','项目名称'],['order_no','订单编号'],['order_name','订单名称'],['customer_name','客户名称'],['assessment_line','考核线'],['start_date','订单开始日期'],['end_date','订单结束日期'],['tax_rate','明细税率(%)'],['amount','明细含税金额'],['income_confirmed','收入确认标记'],['attachment_count','附件数量'],['has_eml','含eml附件'],['role','项目名称'],['service','服务内容'],['tech','技术要求'],['staff','人员要求'],
+];
+function ledgerRows(msg: MessageItem) { return msg.entity === 'order' ? (msg.orders || []) : (msg.contracts || []); }
+function ledgerColumns(msg: MessageItem) { return (msg.entity === 'order' ? ORDER_LEDGER_COLUMNS : CONTRACT_LEDGER_COLUMNS).map(([key,label]) => ({ key, label })); }
+function ledgerCell(row: Record<string, any>, key: string) {
+  if (['role','service','tech','staff'].includes(key)) return Number(row.module_hits?.find((x: any) => x.module_key === key)?.hit) === 1 ? 'AI' : '—';
+  if (key === 'amount') return formatAmount(row[key]);
+  if (key === 'income_confirmed') return Number(row[key]) === 1 ? '已确认' : '未确认';
+  return cellText(row[key]) || '—';
+}
 function formatAmount(v: unknown): string { const n = Number(v); return Number.isFinite(n) ? `${n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} 元` : '金额未填写'; }
 function moduleAiFlags(contract: Record<string, any>) {
   const hits = Array.isArray(contract.module_hits) ? contract.module_hits : [];
