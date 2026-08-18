@@ -45,6 +45,26 @@ export async function downloadWorkbook(wb: ExcelJS.Workbook, fileNamePrefix: str
   URL.revokeObjectURL(url);
 }
 
+const SEARCH_CONTRACT_COLUMNS: Array<[string, string]> = [
+  ['contract_no','合同号'],['customer_name','客户名称'],['contract_name','合同名称'],['assessment_line','考核线'],['bid_no','中标编号'],['related_main_no','关联主合同号'],['framework_alias','框架简称'],['customer_contract_no','客方合同号'],['signing_entity','签约主体'],['contract_type','合同类型'],['sign_date','签约时间'],['start_date','开始时间'],['end_date','结束时间'],['amount_type','金额属性'],['amount','合同金额(含税)'],['tax_rate','税率'],['settlement_terms','结算条款'],['post_eval','是否涉及后评估'],['deposit_amount','履约保证金金额'],['deposit_refund','履约保证金退还条件'],['arbitration','仲裁方式'],['authorizer','授权人'],['status','合同状态'],['expiry_warning','合同断档预警'],['service','服务内容'],['tech','技术要求'],['role','岗位说明'],['staff','人员需求'],
+];
+const SEARCH_ORDER_COLUMNS: Array<[string, string]> = [
+  ['project_no','项目编号'],['project_name','项目名称'],['detail_project_no','明细项目编号'],['order_no','订单编号'],['customer_order_no','客方订单号'],['order_name','订单名称'],['contract_no','合同编号'],['customer_name','客户名称'],['assessment_line','考核线'],['customer_line','客户线'],['customer_type','客户类型'],['settlement_type','结算方式'],['order_type','订单类型'],['order_attr','订单属性'],['salesperson','业务员'],['customer_contract_no','客方合同编号'],['customer_service_target','客方服务对象'],['customer_pm','客方项目经理'],['customer_order_name','客方订单名称'],['created_date','生成日期'],['accepted_date','接受日期'],['start_date','订单开始日期'],['end_date','订单结束日期'],['est_invoice_date','预计开票日期'],['order_status','订单状态'],['tax_rate','订单税率(%)'],['amount','订单含税总额'],['amount_ex_tax','订单不含税总额'],['detail_order_no','订单明细单号'],['customer_detail_order_no','客方订单明细单号'],['redemption_days','赎期(天)'],['is_last_order','是否末单'],['detail_tax_rate','明细税率(%)'],['detail_amount','明细含税金额'],['detail_amount_ex_tax','明细不含税金额'],['deduct_amount','扣款含税金额'],['deduct_amount_ex_tax','扣款不含税金额'],['stop_invoice_amount','停止开票含税金额'],['stop_invoice_amount_ex_tax','停止开票不含税金额'],['confirmed_income_amount','确认收入含税总额'],['confirmed_income_amount_ex_tax','确认收入不含税总额'],['unconfirmed_income_amount','未确认收入含税金额'],['unconfirmed_income_amount_ex_tax','未确认收入不含税金额'],['invoiced_amount','已开票含税总额'],['invoiced_amount_ex_tax','已开票不含税总额'],['returned_amount','已回款含税总额'],['returned_amount_ex_tax','已回款不含税总额'],['invoiced_unreturned_amount','已开票未回款含税金额'],['invoiced_unreturned_amount_ex_tax','已开票未回款不含税金额'],['region','区域'],['province','省份'],['city','地市'],['delivery_list','交付人员名单'],['income_confirmed','收入确认标记'],['maker','制单人'],['make_time','制单时间'],['detail_maker','明细制单人'],['detail_make_time','明细制单时间'],['updater','更新人'],['update_time','更新时间'],['auditor','审核人'],['audit_time','审核时间'],['has_attachment','附件'],['latest_attachment_time','最新附件上传时间'],['attachment_count','附件数量'],['has_eml','含eml附件'],['role','项目名称'],['service','服务内容'],['tech','技术要求'],['staff','人员要求'],
+];
+
+/** 综合检索专用：不加标题、合并单元格或统计行，只输出中文表头与真实台账数据。 */
+export async function exportPlainSearchLedgerExcel(rows: Record<string, any>[], entity: 'contract' | 'order') {
+  const columns = entity === 'order' ? SEARCH_ORDER_COLUMNS : SEARCH_CONTRACT_COLUMNS;
+  const wb = new ExcelJS.Workbook(); const ws = wb.addWorksheet(entity === 'order' ? '订单台账' : '合同台账');
+  ws.addRow(columns.map(([, label]) => label));
+  rows.forEach((row) => ws.addRow(columns.map(([key]) => {
+    if (['role','service','tech','staff'].includes(key)) return Number(row.module_hits?.find((x: any) => x.module_key === key)?.hit) === 1 ? 'AI' : '—';
+    return row[key] ?? '';
+  })));
+  ws.columns = columns.map(([key, label]) => ({ width: Math.min(Math.max(label.length + 4, key.includes('terms') ? 32 : 14), 36) }));
+  await downloadWorkbook(wb, entity === 'order' ? '综合检索订单台账' : '综合检索合同台账');
+}
+
 export interface ExportContractRow {
   contract_no?: string;
   no?: string;

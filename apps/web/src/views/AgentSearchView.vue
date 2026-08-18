@@ -227,7 +227,7 @@ import { Plus, ChatDotSquare, Search, Download } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { agentApi, type Citation, type TableRowItem } from '../api/agentApi';
 import { contractApi, orderApi } from '../api';
-import { exportFullContractLedgerExcel, exportFullOrderLedgerExcel } from '../utils/excelExporter';
+import { exportPlainSearchLedgerExcel } from '../utils/excelExporter';
 import { renderAssistantContent } from '../utils/markdown';
 
 interface MessageItem {
@@ -460,7 +460,7 @@ async function handleClearChat() {
 }
 
 async function handleExportResult(msg: MessageItem) {
-  let list = msg.tableData || [];
+  let list: any[] = ledgerRows(msg).length ? ledgerRows(msg) : (msg.tableData || []);
   if (msg.resultId && (msg.resultTotal || 0) > list.length) {
     const res = await agentApi.getResult(msg.resultId, { page: 1, pageSize: 200 });
     if (res.code !== 200) return ElMessage.error(res.msg || '读取完整检索结果失败');
@@ -477,8 +477,7 @@ async function handleExportResult(msg: MessageItem) {
   }
 
   try {
-    if (msg.entity === 'order') await exportFullOrderLedgerExcel(list, '综合检索订单台账');
-    else await exportFullContractLedgerExcel(list, '综合检索合同台账');
+    await exportPlainSearchLedgerExcel(list, msg.entity === 'order' ? 'order' : 'contract');
     ElMessage.success(`${msg.entity === 'order' ? '订单' : '合同'}台账 Excel 已导出（共 ${list.length} 条）`);
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
