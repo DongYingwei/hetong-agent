@@ -19,10 +19,7 @@ FROM (VALUES
   ('菜单管理', '菜单', '/system', '/menu', 'system:menu', 1),
   ('首页配置', '菜单', '/system', '/homepage', 'system:homepage', 2),
   ('用户管理', '菜单', '/system', '/users', 'system:users', 3),
-  ('角色管理', '菜单', '/system', '/roles', 'system:roles', 4),
-  ('部门管理', '菜单', '/system', '/departments', 'system:departments', 5),
-  ('我的部门', '菜单', '/system', '/my-department', 'system:my-department', 6),
-  ('文件管理', '菜单', '/system', '/files', 'system:files', 7)
+  ('角色管理', '菜单', '/system', '/roles', 'system:roles', 4)
 ) AS v(name, type, parent_path, path, permission, sort)
 LEFT JOIN sys_menu parent ON parent.path = v.parent_path AND parent.delete_status = 0
 WHERE NOT EXISTS (SELECT 1 FROM sys_menu m WHERE m.path = v.path AND m.delete_status = 0);
