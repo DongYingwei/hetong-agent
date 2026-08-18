@@ -84,14 +84,15 @@
                       <td v-for="col in ledgerColumns(msg)" :key="col.key" class="px-3 py-2">{{ ledgerCell(row,col.key) }}</td>
                     </tr></tbody></table>
                   </div>
-                  <div v-if="ledgerRows(msg).length > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t">{{ msg.isExpanded ? '已展开全部明细' : `共 ${ledgerRows(msg).length} 条，展示前 5 条` }} <span class="float-right cursor-pointer font-bold" @click="toggleDetails(msg)">{{ msg.isExpanded ? '收起明细 ▲' : '展开查看全部明细 ▼' }}</span></div>
+                  <div v-if="(msg.resultTotal || ledgerRows(msg).length) > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t flex items-center justify-between">
+                    <span>{{ msg.isExpanded ? `已展开全部 ${ledgerRows(msg).length} 条明细` : `共 ${msg.resultTotal || ledgerRows(msg).length} 条，展示前 5 条` }}</span>
+                    <el-button link size="small" type="primary" :loading="msg.loadingDetails" @click="toggleDetails(msg)">{{ msg.isExpanded ? '收起明细' : '一键展开全部明细' }}</el-button>
+                  </div>
                 </div>
                   <div v-if="msg.summary" class="rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-700">
                     {{ msg.summary.scope }}：共 {{ msg.entity === 'order' ? msg.summary.order_count : msg.summary.contract_count }} 条{{ msg.entity === 'order' ? '订单' : '合同' }}；金额合计 {{ formatAmount(msg.summary.total_amount) }}；{{ msg.summary.missing_amount_count }} 条未填写金额，未计入合计。
                     <div v-if="msg.summary.amount_type_breakdown?.length" class="mt-1 text-gray-500">金额口径说明：<span v-for="(item, index) in msg.summary.amount_type_breakdown" :key="item.amount_type">{{ index ? '；' : '' }}{{ item.amount_type }} {{ item.contract_count }} 份，{{ formatAmount(item.total_amount) }}</span></div>
                   </div>
-                  <div class="flex gap-2"><el-button size="small" @click="handleExportResult(msg)"><el-icon class="mr-1"><Download /></el-icon>导出{{ msg.entity === 'order' ? '订单' : '合同' }}台账</el-button></div>
-
                 <!-- 结构化结果表格（列名随 SQL 动态变化） -->
                 <div v-if="!ledgerRows(msg).length && msg.tableData && msg.tableData.length > 0" class="mt-3 border border-gray-200 rounded-lg overflow-hidden">
                   <div :class="msg.isExpanded ? 'max-h-[360px] overflow-y-auto' : ''">
@@ -498,6 +499,8 @@ async function toggleDetails(msg: MessageItem) {
       if (rows.length >= res.data.total) break;
     }
     msg.tableData = rows;
+    if (msg.entity === 'order') msg.orders = rows;
+    else msg.contracts = rows;
     msg.isExpanded = true;
   } catch (error) { ElMessage.error(error instanceof Error ? error.message : '读取完整检索结果失败'); }
   finally { msg.loadingDetails = false; }
