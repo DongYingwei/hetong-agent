@@ -93,14 +93,6 @@ const currentPermData = ref<any>(null);
 
 const roleList = ref<any[]>([]);
 
-const mockRoleList = [
-  { id: 1, role_code: 'R001', role_name: '管理员', perm_key: 'admin', sort: 1, status: 1, create_time: '2025-01-01' },
-  { id: 2, role_code: 'R002', role_name: '合同专员', perm_key: 'contract:specialist', sort: 2, status: 1, create_time: '2025-01-01' },
-  { id: 3, role_code: 'R003', role_name: '法务人员', perm_key: 'legal:staff', sort: 3, status: 1, create_time: '2025-01-01' },
-  { id: 4, role_code: 'R004', role_name: '部门负责人', perm_key: 'dept:leader', sort: 4, status: 1, create_time: '2025-01-01' },
-  { id: 5, role_code: 'R005', role_name: '高管', perm_key: 'executive', sort: 5, status: 0, create_time: '2025-02-15' },
-];
-
 onMounted(() => {
   loadData();
 });
@@ -109,13 +101,10 @@ async function loadData() {
   loading.value = true;
   try {
     const res = await roleApi.getList();
-    if (res.code === 200 && res.data && res.data.length > 0) {
-      roleList.value = res.data;
-    } else {
-      roleList.value = mockRoleList;
-    }
-  } catch (e) {
-    roleList.value = mockRoleList;
+    roleList.value = res.code === 200 && Array.isArray(res.data) ? res.data : [];
+  } catch {
+    roleList.value = [];
+    ElMessage.error('读取角色列表失败');
   } finally {
     loading.value = false;
   }

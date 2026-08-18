@@ -14,4 +14,10 @@ export const roleApi = {
   delete(id: number): Promise<ApiResponse<null>> {
     return request.delete(`/role/delete/${id}`);
   },
+  getMenus(id: number): Promise<ApiResponse<{ menuIds: number[] }>> {
+    return request.get(`/role/${id}/menus`);
+  },
+  saveMenus(id: number, menuIds: number[]): Promise<ApiResponse<{ roleId: number; menuIds: number[] }>> {
+    return request.put(`/role/${id}/menus`, { menuIds });
+  },
 };

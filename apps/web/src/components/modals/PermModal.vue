@@ -43,7 +43,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
-import { usePermissionStore } from '../../stores/permissionStore';
+import { menuApi, roleApi } from '../../api';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -52,39 +52,25 @@ const props = defineProps<{
 
 const emit = defineEmits(['update:modelValue', 'success']);
 
-const permissionStore = usePermissionStore();
-
 const visible = ref(false);
 const loading = ref(false);
 const treeRef = ref<any>(null);
 
 const checkedKeys = ref<number[]>([1, 11, 12, 13, 14, 2, 26]);
 
-const menuTreeData = [
-  {
-    id: 1,
-    label: '合同管理',
-    children: [
-      { id: 11, label: '合同台账' },
-      { id: 12, label: '智能体检索' },
-      { id: 13, label: '关键词管理' },
-      { id: 14, label: '合同模块' },
-    ],
-  },
-  {
-    id: 2,
-    label: '系统管理',
-    children: [
-      { id: 21, label: '菜单管理' },
-      { id: 22, label: '首页配置' },
-      { id: 23, label: '用户管理' },
-      { id: 24, label: '角色管理' },
-      { id: 25, label: '部门管理' },
-      { id: 26, label: '我的部门' },
-      { id: 27, label: '文件管理' },
-    ],
-  },
-];
+const menuTreeData = ref<any[]>([]);
+function buildTree(list: any[]) {
+  const map = new Map<number, any>(); const roots: any[] = [];
+  list.forEach((item) => map.set(item.id, { id: item.id, label: item.name, children: [] }));
+  list.forEach((item) => { const node = map.get(item.id); if (item.parent_id && map.has(item.parent_id)) map.get(item.parent_id).children.push(node); else roots.push(node); });
+  return roots;
+}
+async function loadRolePermissions() {
+  if (!props.roleData?.id) return;
+  const [menus, permissions] = await Promise.all([menuApi.getList(), roleApi.getMenus(props.roleData.id)]);
+  if (menus.code === 200) menuTreeData.value = buildTree(menus.data || []);
+  if (permissions.code === 200) checkedKeys.value = permissions.data.menuIds || [];
+}
 
 watch(() => props.modelValue, (val) => {
   visible.value = val;
@@ -96,18 +82,8 @@ watch(visible, (val) => {
 
 watch(() => props.roleData, (val) => {
   if (val) {
-    const roleName = val.roleName || val.role_name;
-    const permKey = val.permKey || val.perm_key;
-    
-    if (roleName && permissionStore.rolePermissions[roleName]) {
-      checkedKeys.value = permissionStore.rolePermissions[roleName];
-    } else if (permKey && permissionStore.rolePermissions[permKey]) {
-      checkedKeys.value = permissionStore.rolePermissions[permKey];
-    } else if (permKey === 'admin' || roleName === '管理员') {
-      checkedKeys.value = [1, 11, 12, 13, 14, 2, 21, 22, 23, 24, 25, 26, 27];
-    } else {
-      checkedKeys.value = [1, 11, 12, 13, 14, 2, 26];
-    }
+    checkedKeys.value = [];
+    void loadRolePermissions();
   }
 });
 
@@ -118,15 +94,8 @@ async function handleSubmit() {
     const halfChecked = treeRef.value ? treeRef.value.getHalfCheckedKeys() : [];
     const allSelectedKeys = Array.from(new Set([...checked, ...halfChecked]));
 
-    const roleName = props.roleData?.roleName || props.roleData?.role_name;
-    const permKey = props.roleData?.permKey || props.roleData?.perm_key;
-
-    if (roleName) {
-      permissionStore.setRolePermissions(roleName, allSelectedKeys);
-    }
-    if (permKey) {
-      permissionStore.setRolePermissions(permKey, allSelectedKeys);
-    }
+    if (!props.roleData?.id) return;
+    await roleApi.saveMenus(props.roleData.id, allSelectedKeys.map(Number));
 
     ElMessage.success('保存成功');
     visible.value = false;

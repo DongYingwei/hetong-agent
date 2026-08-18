@@ -75,10 +75,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import MenuModal from '../components/modals/MenuModal.vue';
+import { menuApi } from '../api';
 
 interface MenuItem {
   id: number;
@@ -95,40 +96,25 @@ const showModal = ref(false);
 const currentEditData = ref<MenuItem | null>(null);
 const currentParentData = ref<MenuItem | null>(null);
 
-const menuList = ref<MenuItem[]>([
-  {
-    id: 1,
-    name: '合同管理',
-    type: '目录',
-    path: '/contract',
-    permission: '—',
-    sort: 1,
-    status: 1,
-    children: [
-      { id: 11, name: '├ 合同台账', type: '菜单', path: '/contract/ledger', permission: 'contract:ledger', sort: 1, status: 1 },
-      { id: 12, name: '├ 智能体检索', type: '菜单', path: '/contract/search', permission: 'contract:search', sort: 2, status: 1 },
-      { id: 13, name: '├ 关键词管理', type: '菜单', path: '/contract/keywords', permission: 'contract:keywords', sort: 3, status: 1 },
-      { id: 14, name: '└ 模块配置', type: '菜单', path: '/contract/sections', permission: 'contract:sections', sort: 4, status: 1 },
-    ],
-  },
-  {
-    id: 2,
-    name: '系统管理',
-    type: '目录',
-    path: '/system',
-    permission: '—',
-    sort: 2,
-    status: 1,
-    children: [
-      { id: 21, name: '├ 菜单管理', type: '菜单', path: '/system/menu', permission: 'system:menu', sort: 1, status: 1 },
-      { id: 22, name: '├ 首页配置', type: '菜单', path: '/system/homepage', permission: 'system:homepage', sort: 2, status: 1 },
-      { id: 23, name: '├ 用户管理', type: '菜单', path: '/system/users', permission: 'system:users', sort: 3, status: 1 },
-      { id: 24, name: '├ 角色管理', type: '菜单', path: '/system/roles', permission: 'system:roles', sort: 4, status: 1 },
-      { id: 25, name: '├ 部门管理', type: '菜单', path: '/system/departments', permission: 'system:departments', sort: 5, status: 1 },
-      { id: 26, name: '└ 我的部门', type: '菜单', path: '/system/my-department', permission: 'system:myDepartment', sort: 6, status: 1 },
-    ],
-  },
-]);
+const menuList = ref<MenuItem[]>([]);
+
+function toTree(list: any[]) {
+  const nodes = new Map<number, MenuItem>();
+  const roots: MenuItem[] = [];
+  list.forEach((item) => nodes.set(item.id, { ...item, children: [] }));
+  nodes.forEach((item: any) => {
+    if (item.parent_id && nodes.has(item.parent_id)) nodes.get(item.parent_id)!.children!.push(item);
+    else roots.push(item);
+  });
+  return roots;
+}
+async function loadData() {
+  try {
+    const res = await menuApi.getList();
+    menuList.value = res.code === 200 && Array.isArray(res.data) ? toTree(res.data) : [];
+  } catch { menuList.value = []; ElMessage.error('读取菜单列表失败'); }
+}
+onMounted(loadData);
 
 function handleCreate() {
   currentEditData.value = null;
@@ -149,7 +135,7 @@ function handleEdit(row: MenuItem) {
 }
 
 function handleModalSuccess() {
-  // refresh menu list if needed
+  loadData();
 }
 
 function handleDelete(row: MenuItem) {
@@ -157,8 +143,10 @@ function handleDelete(row: MenuItem) {
     confirmButtonText: '确定删除',
     cancelButtonText: '取消',
     type: 'warning',
-  }).then(() => {
+  }).then(async () => {
+    await menuApi.delete(row.id);
     ElMessage.success('删除成功');
+    loadData();
   });
 }
 </script>
