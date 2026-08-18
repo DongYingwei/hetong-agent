@@ -1,5 +1,5 @@
-import request from '../utils/request';
-import type { ApiResponse, PageResult, OrderLedger } from '../types';
+import request from "../utils/request";
+import type { ApiResponse, PageResult, OrderLedger } from "../types";
 
 export const orderApi = {
   // 获取订单台账列表
@@ -7,13 +7,9 @@ export const orderApi = {
     page?: number;
     pageSize?: number;
     keyword?: string;
-    roleAi?: string;
-    serviceAi?: string;
-    techAi?: string;
-    staffAi?: string;
-    roleKeywords?: string; serviceKeywords?: string; techKeywords?: string; staffKeywords?: string;
+    moduleFilters?: string;
   }): Promise<ApiResponse<PageResult<OrderLedger>>> {
-    return request.get('/order/list', { params });
+    return request.get("/order/list", { params });
   },
 
   // 获取单个订单详情
@@ -26,7 +22,10 @@ export const orderApi = {
     return request.post(`/order/update-keywords`, { id, keywords });
   },
 
-  update(id: number, data: Partial<OrderLedger>): Promise<ApiResponse<{ id: number }>> {
+  update(
+    id: number,
+    data: Partial<OrderLedger>,
+  ): Promise<ApiResponse<{ id: number }>> {
     return request.put(`/order/detail/${id}`, data);
   },
 };

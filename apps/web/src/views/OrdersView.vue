@@ -29,30 +29,20 @@
         </el-input>
 
         <el-select
-          v-model="filters.roleAi"
-          placeholder="项目名称"
+          v-for="module in modules"
+          :key="module.module_key"
+          v-model="moduleFilters[module.module_key]"
+          :placeholder="module.name"
           clearable
           style="width: 140px"
           @change="loadData"
         >
-          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-
-        <el-select
-          v-model="filters.serviceAi"
-          placeholder="服务内容"
-          clearable
-          style="width: 140px"
-          @change="loadData"
-        >
-          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-
-        <el-select v-model="filters.techAi" placeholder="技术要求" clearable style="width: 140px" @change="loadData">
-          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
-        </el-select>
-        <el-select v-model="filters.staffAi" placeholder="人员要求" clearable style="width: 140px" @change="loadData">
-          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
+          <el-option
+            v-for="item in keywordOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </el-select>
 
         <el-button type="primary" @click="loadData">查询</el-button>
@@ -62,31 +52,66 @@
 
     <!-- 数据表格 (1:1 还原 demo3.html 表头与固定列控制) -->
     <div class="content-card p-0 overflow-hidden">
-      <el-table :data="tableData" v-loading="loading" stripe style="width: 100%">
+      <el-table
+        :data="tableData"
+        v-loading="loading"
+        stripe
+        style="width: 100%"
+      >
         <el-table-column prop="project_no" label="项目编号" width="120">
           <template #default="{ row }">
             <div class="flex items-center gap-1.5 min-w-0">
-              <span class="font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">{{ row.project_no }}</span>
-              <el-tooltip v-if="row.name_mismatch === 1 || row.name_mismatch === true" content="数据源标记：订单名称与实际内容不符" placement="top">
-                <span class="inline-flex text-[#DC2626] shrink-0" aria-label="订单名称不符">⚠</span>
+              <span
+                class="font-medium font-mono cursor-pointer hover:underline"
+                @click="handleOpenDetail(row)"
+                >{{ row.project_no }}</span
+              >
+              <el-tooltip
+                v-if="row.name_mismatch === 1 || row.name_mismatch === true"
+                content="数据源标记：订单名称与实际内容不符"
+                placement="top"
+              >
+                <span
+                  class="inline-flex text-[#DC2626] shrink-0"
+                  aria-label="订单名称不符"
+                  >⚠</span
+                >
               </el-tooltip>
             </div>
           </template>
         </el-table-column>
 
-        <el-table-column prop="project_name" label="项目名称" min-width="180" show-overflow-tooltip />
+        <el-table-column
+          prop="project_name"
+          label="项目名称"
+          min-width="180"
+          show-overflow-tooltip
+        />
 
         <el-table-column prop="order_no" label="订单编号" min-width="180">
           <template #default="{ row }">
-            <span class="font-medium font-mono cursor-pointer hover:underline" @click="handleOpenDetail(row)">
+            <span
+              class="font-medium font-mono cursor-pointer hover:underline"
+              @click="handleOpenDetail(row)"
+            >
               {{ row.order_no }}
             </span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="order_name" label="订单名称" min-width="220" show-overflow-tooltip />
+        <el-table-column
+          prop="order_name"
+          label="订单名称"
+          min-width="220"
+          show-overflow-tooltip
+        />
 
-        <el-table-column prop="customer_name" label="客户名称" min-width="160" show-overflow-tooltip />
+        <el-table-column
+          prop="customer_name"
+          label="客户名称"
+          min-width="160"
+          show-overflow-tooltip
+        />
 
         <el-table-column prop="assessment_line" label="考核线" width="100" />
 
@@ -103,36 +128,60 @@
         </el-table-column>
 
         <el-table-column label="明细税率(%)" width="110" align="right">
-          <template #default="{ row }">
-            {{ row.tax_rate ?? 6 }}%
-          </template>
+          <template #default="{ row }"> {{ row.tax_rate ?? 6 }}% </template>
         </el-table-column>
 
         <el-table-column label="明细含税金额" width="140" align="right">
           <template #default="{ row }">
-            <span class="font-medium text-[#1A1A1A]">{{ formatCurrency(row.amount) }}</span>
+            <span class="font-medium text-[#1A1A1A]">{{
+              formatCurrency(row.amount)
+            }}</span>
           </template>
         </el-table-column>
 
         <el-table-column label="收入确认标记" width="120" align="center">
           <template #default="{ row }">
-            <span class="tag" :class="row.income_confirmed === 1 ? 'tag-green' : 'tag-orange'">
-              {{ row.income_confirmed === 1 ? '已确认' : '未确认' }}
+            <span
+              class="tag"
+              :class="row.income_confirmed === 1 ? 'tag-green' : 'tag-orange'"
+            >
+              {{ row.income_confirmed === 1 ? "已确认" : "未确认" }}
             </span>
           </template>
         </el-table-column>
 
-        <el-table-column prop="attachment_count" label="附件数量" width="100" align="center" />
+        <el-table-column
+          prop="attachment_count"
+          label="附件数量"
+          width="100"
+          align="center"
+        />
 
-        <el-table-column prop="has_eml" label="含eml附件" width="100" align="center">
+        <el-table-column
+          prop="has_eml"
+          label="含eml附件"
+          width="100"
+          align="center"
+        >
           <template #default="{ row }">
-            <span>{{ row.has_eml || '否' }}</span>
+            <span>{{ row.has_eml || "否" }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column v-for="module in aiModules" :key="module.key" :label="module.name" width="100" align="center">
+        <el-table-column
+          v-for="module in modules"
+          :key="module.module_key"
+          :label="module.name"
+          width="100"
+          align="center"
+        >
           <template #default="{ row }">
-            <span v-if="moduleHit(row, module.key)" class="tag tag-green" style="font-size: 11px">AI</span>
+            <span
+              v-if="moduleHit(row, module.module_key)"
+              class="tag tag-green"
+              style="font-size: 11px"
+              >AI</span
+            >
             <span v-else class="text-gray-300 text-xs">—</span>
           </template>
         </el-table-column>
@@ -140,7 +189,12 @@
         <!-- 操作 (固定右侧) -->
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button link size="small" style="color: #1f1f1f;" @click="handleOpenDetail(row)">
+            <el-button
+              link
+              size="small"
+              style="color: #1f1f1f"
+              @click="handleOpenDetail(row)"
+            >
               详情
             </el-button>
           </template>
@@ -148,8 +202,15 @@
       </el-table>
 
       <!-- 分页区域 -->
-      <div class="p-4 flex items-center justify-between border-t border-gray-100">
-        <span class="text-xs text-gray-500">共 {{ total }} 条记录，当前第 {{ page }}/{{ Math.ceil(total / pageSize) || 1 }} 页</span>
+      <div
+        class="p-4 flex items-center justify-between border-t border-gray-100"
+      >
+        <span class="text-xs text-gray-500"
+          >共 {{ total }} 条记录，当前第 {{ page }}/{{
+            Math.ceil(total / pageSize) || 1
+          }}
+          页</span
+        >
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
@@ -172,25 +233,25 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { Search, Download } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
-import { orderApi, keywordApi, type KeywordItem } from '../api';
-import { formatCurrency, formatDate } from '../utils/formatters';
-import type { OrderLedger } from '../types';
-import OrderDetailModal from '../components/modals/OrderDetailModal.vue';
+import { ref, reactive, onMounted } from "vue";
+import { Search, Download } from "@element-plus/icons-vue";
+import { ElMessage } from "element-plus";
+import { orderApi, keywordApi, contractApi, type KeywordItem } from "../api";
+import type { ContractModule } from "../api/contractApi";
+import { buildModuleFilters } from "../utils/moduleAi";
+import { formatCurrency, formatDate } from "../utils/formatters";
+import type { OrderLedger } from "../types";
+import OrderDetailModal from "../components/modals/OrderDetailModal.vue";
 
-import { exportFullOrderLedgerExcel } from '../utils/excelExporter';
+import { exportFullOrderLedgerExcel } from "../utils/excelExporter";
 
 const loading = ref(false);
 const showDetailModal = ref(false);
 const currentOrder = ref<OrderLedger | null>(null);
 
 const tableData = ref<OrderLedger[]>([]);
-const aiModules = [
-  { key: 'role', name: '项目名称' }, { key: 'service', name: '服务内容' },
-  { key: 'tech', name: '技术要求' }, { key: 'staff', name: '人员要求' },
-];
+const modules = ref<ContractModule[]>([]);
+const moduleFilters = reactive<Record<string, string>>({});
 
 function moduleHit(row: OrderLedger, key: string) {
   return !!row.module_hits?.some((x) => x.module_key === key && x.hit === 1);
@@ -200,21 +261,35 @@ const page = ref(1);
 const pageSize = ref(10);
 
 const filters = reactive({
-  keyword: '',
-  roleAi: '', serviceAi: '', techAi: '', staffAi: '',
+  keyword: "",
 });
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
 onMounted(async () => {
   await loadKeywords();
+  const moduleRes = await contractApi.getModules();
+  if (moduleRes.code === 200) {
+    modules.value = moduleRes.data.list;
+    modules.value.forEach((m) => {
+      moduleFilters[m.module_key] ??= "";
+    });
+  }
   loadData();
 });
 async function loadKeywords() {
   const res = await keywordApi.getList({ page: 1, pageSize: 200 });
   if (res.code === 200) {
-    res.data.list.forEach((item: KeywordItem) => keywordTerms.set(item.keyword_name, [item.keyword_name, ...(item.sub_words || [])]));
-    keywordOptions.value = res.data.list.map((item: KeywordItem) => ({ label: item.keyword_name, value: item.keyword_name }));
+    res.data.list.forEach((item: KeywordItem) =>
+      keywordTerms.set(item.keyword_name, [
+        item.keyword_name,
+        ...(item.sub_words || []),
+      ]),
+    );
+    keywordOptions.value = res.data.list.map((item: KeywordItem) => ({
+      label: item.keyword_name,
+      value: item.keyword_name,
+    }));
   }
 }
 
@@ -225,9 +300,7 @@ async function loadData() {
       page: page.value,
       pageSize: pageSize.value,
       keyword: filters.keyword,
-      roleAi: filters.roleAi, serviceAi: filters.serviceAi,
-      techAi: filters.techAi, staffAi: filters.staffAi,
-      roleKeywords: expandKeyword(filters.roleAi), serviceKeywords: expandKeyword(filters.serviceAi), techKeywords: expandKeyword(filters.techAi), staffKeywords: expandKeyword(filters.staffAi),
+      moduleFilters: buildModuleFilters(moduleFilters, keywordTerms),
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -237,11 +310,11 @@ async function loadData() {
     loading.value = false;
   }
 }
-function expandKeyword(value: string) { return (keywordTerms.get(value) || (value ? [value] : [])).join('\u001f'); }
-
 function handleReset() {
-  filters.keyword = '';
-  filters.roleAi = ''; filters.serviceAi = ''; filters.techAi = ''; filters.staffAi = '';
+  filters.keyword = "";
+  Object.keys(moduleFilters).forEach((key) => {
+    moduleFilters[key] = "";
+  });
   page.value = 1;
   loadData();
 }
@@ -253,10 +326,10 @@ function handleOpenDetail(row: OrderLedger) {
 
 async function handleExport() {
   if (!tableData.value || tableData.value.length === 0) {
-    ElMessage.warning('当前暂无订单数据可导出');
+    ElMessage.warning("当前暂无订单数据可导出");
     return;
   }
-  await exportFullOrderLedgerExcel(tableData.value, '订单台账全量明细');
-  ElMessage.success('🎉 订单台账 Excel 已成功生成并开始下载！');
+  await exportFullOrderLedgerExcel(tableData.value, "订单台账全量明细");
+  ElMessage.success("🎉 订单台账 Excel 已成功生成并开始下载！");
 }
 </script>

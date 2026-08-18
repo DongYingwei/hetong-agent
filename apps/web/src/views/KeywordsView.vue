@@ -8,7 +8,7 @@
           <p class="text-xs text-gray-500 mt-1">管理命中关键词类别，当合同或订单中出现该类别下的词或语义时，即认定为命中该关键词</p>
         </div>
         <div class="flex gap-2">
-        <el-button v-if="isAdmin" size="large" @click="showRescanModal = true">
+        <el-button size="large" @click="showRescanModal = true">
           重新扫描关键词
         </el-button>
         <el-button
@@ -52,7 +52,7 @@
         <span class="font-mono text-gray-500">#{{ job.id }}</span><span>{{ scopeLabel(job.scope) }}</span>
         <span class="tag" :class="job.status === 'completed' ? 'tag-green' : job.status.includes('failed') ? 'tag-red' : 'tag-blue'">{{ statusLabel(job.status) }}</span>
         <span class="text-gray-500">{{ job.success_count + job.skipped_count + job.failed_count }}/{{ job.total_count }} · 成功 {{ job.success_count }} · 跳过 {{ job.skipped_count }} · 失败 {{ job.failed_count }}</span>
-        <el-button v-if="isAdmin && job.failed_count" link size="small" @click="retryJob(job.id)">重试失败项</el-button>
+        <el-button v-if="job.failed_count" link size="small" @click="retryJob(job.id)">重试失败项</el-button>
       </div>
     </div>
 
@@ -223,7 +223,6 @@ const currentMasterId = ref<number | null>(null);
 const currentMasterName = ref('');
 const currentExistingSubWords = ref<string[]>([]);
 const showRescanModal = ref(false);
-const isAdmin = Number(JSON.parse(localStorage.getItem('contract_user') || '{}').role) === 0;
 const rescanJobs = ref<KeywordRescanJob[]>([]);
 let jobTimer: ReturnType<typeof setInterval> | undefined;
 

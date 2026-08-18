@@ -66,7 +66,6 @@
           <el-icon class="text-lg"><Collection /></el-icon>
           <span>模块配置</span>
         </router-link>
-        <router-link v-if="currentRole === '管理员'" to="/contract-order-links" class="flex items-center gap-3 px-3 h-10 rounded-lg cursor-pointer transition-colors text-[#1f1f1f] font-medium select-none" :class="$route.path === '/contract-order-links' ? 'bg-[#f8a42b] !text-white font-semibold hover:bg-[#e5931a]' : 'hover:bg-[#faeae1]'"><el-icon class="text-lg"><Connection /></el-icon><span>合同订单关联</span></router-link>
 
         <!-- 一级 6：系统管理 (折叠分组) -->
         <div v-if="hasAnySystemMenu" class="pt-1">

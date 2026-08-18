@@ -17,24 +17,22 @@ async function attachModuleHits(rows) {
 router.get('/list', async (ctx) => {
   const page = Math.max(parseInt(ctx.query.page || '1', 10), 1);
   const pageSize = Math.min(Math.max(parseInt(ctx.query.pageSize || '10', 10), 1), 200);
-  const { keyword = '', roleAi = '', serviceAi = '', techAi = '', staffAi = '', roleKeywords = '', serviceKeywords = '', techKeywords = '', staffKeywords = '' } = ctx.query;
+  const { keyword = '', moduleFilters = '' } = ctx.query;
   const params = [];
   let where = 'WHERE delete_status=0';
   if (keyword.trim()) {
     params.push(`%${keyword.trim()}%`); const n = params.length;
     where += ` AND (order_no ILIKE $${n} OR order_name ILIKE $${n} OR project_no ILIKE $${n} OR customer_name ILIKE $${n})`;
   }
-  for (const [moduleKey, enabled, selected] of [['role', roleAi, roleKeywords], ['service', serviceAi, serviceKeywords], ['tech', techAi, techKeywords], ['staff', staffAi, staffKeywords]]) {
-    const terms = String(selected || '').split('\u001f').map((item) => item.trim()).filter(Boolean);
-    if (String(enabled) === '1' || terms.length) {
-      params.push(moduleKey);
-      const conditions = ['omh.order_id = sys_order.id', `omh.module_key = $${params.length}`, 'omh.hit = 1'];
-      if (terms.length) {
-        params.push(terms.map((term) => `%${term}%`));
-        conditions.push(`omh.keywords ILIKE ANY($${params.length}::text[])`);
-      }
-      where += ` AND EXISTS (SELECT 1 FROM order_module_hits omh WHERE ${conditions.join(' AND ')})`;
-    }
+  let filters = [];
+  if (moduleFilters) { try { filters = JSON.parse(String(moduleFilters)); } catch { ctx.throw(400, '模块筛选参数格式错误'); } }
+  if (!Array.isArray(filters)) ctx.throw(400, '模块筛选参数格式错误');
+  for (const filter of filters) {
+    const moduleKey = String(filter?.module_key || '').trim(); const terms = Array.isArray(filter?.keywords) ? filter.keywords.map((x) => String(x).trim()).filter(Boolean) : [];
+    if (!moduleKey) ctx.throw(400, '模块筛选缺少模块标识');
+    params.push(moduleKey); const conditions = ['omh.order_id = sys_order.id', `omh.module_key = $${params.length}`, 'omh.hit = 1'];
+    if (terms.length) { params.push(terms.map((term) => `%${term}%`)); conditions.push(`omh.keywords ILIKE ANY($${params.length}::text[])`); }
+    where += ` AND EXISTS (SELECT 1 FROM order_module_hits omh WHERE ${conditions.join(' AND ')})`;
   }
   const [{ total }] = await query(`SELECT COUNT(*)::int AS total FROM sys_order ${where}`, params);
   const list = await query(`SELECT sys_order.*, omo.values AS manual_values FROM sys_order

@@ -30,11 +30,33 @@
           </template>
         </el-input>
 
-        <el-select v-model="filters.verifyStatus" placeholder="核对状态" clearable style="width: 130px">
-          <el-option v-for="item in dictStore.dictMap.verify_status" :key="item.value" :label="item.label" :value="item.value" />
+        <el-select
+          v-model="filters.verifyStatus"
+          placeholder="核对状态"
+          clearable
+          style="width: 130px"
+        >
+          <el-option
+            v-for="item in dictStore.dictMap.verify_status"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </el-select>
-        <el-select v-for="module in modules" :key="module.module_key" v-model="moduleFilters[module.module_key]" :placeholder="module.name" clearable style="width: 140px">
-          <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
+        <el-select
+          v-for="module in modules"
+          :key="module.module_key"
+          v-model="moduleFilters[module.module_key]"
+          :placeholder="module.name"
+          clearable
+          style="width: 140px"
+        >
+          <el-option
+            v-for="item in keywordOptions"
+            :key="item.value"
+            :label="item.label"
+            :value="item.value"
+          />
         </el-select>
         <el-button type="primary" @click="loadData">查询</el-button>
         <el-button @click="handleReset">重置</el-button>
@@ -49,19 +71,37 @@
 
     <!-- 数据表格 (1:1 还原 demo.html 列名与操作控制) -->
     <div class="content-card p-0 overflow-hidden">
-      <el-table :data="tableData" v-loading="loading" stripe style="width: 100%">
+      <el-table
+        :data="tableData"
+        v-loading="loading"
+        stripe
+        style="width: 100%"
+      >
         <el-table-column prop="contract_no" label="合同号" width="150">
           <template #default="{ row }">
-            <span class="font-medium cursor-pointer hover:underline font-mono" @click="goToDetail(row.id)">
+            <span
+              class="font-medium cursor-pointer hover:underline font-mono"
+              @click="goToDetail(row.id)"
+            >
               {{ row.contract_no }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column prop="customer_name" label="客户名称" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="contract_name" label="合同名称" min-width="160" show-overflow-tooltip />
+        <el-table-column
+          prop="customer_name"
+          label="客户名称"
+          min-width="160"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="contract_name"
+          label="合同名称"
+          min-width="160"
+          show-overflow-tooltip
+        />
         <el-table-column label="合同类型" width="120">
           <template #default="{ row }">
-            {{ dictStore.getLabel('contract_type', row.contract_type) }}
+            {{ dictStore.getLabel("contract_type", row.contract_type) }}
           </template>
         </el-table-column>
         <el-table-column label="签约时间" width="120">
@@ -77,24 +117,36 @@
         <el-table-column prop="assessment_line" label="考核线" width="90" />
         <el-table-column label="合同状态" width="110" align="center">
           <template #default="{ row }">
-            <span class="tag tag-green">{{ dictStore.getLabel('contract_status', row.contract_status) }}</span>
+            <span class="tag tag-green">{{
+              dictStore.getLabel("contract_status", row.contract_status)
+            }}</span>
           </template>
         </el-table-column>
         <el-table-column label="核对状态" width="110" align="center">
           <template #default="{ row }">
             <span
               class="tag cursor-pointer"
-              :class="row.verify_status === 1 ? 'tag-green' : (row.verify_status === 2 ? 'tag-red' : 'tag-orange')"
+              :class="
+                row.verify_status === 1
+                  ? 'tag-green'
+                  : row.verify_status === 2
+                    ? 'tag-red'
+                    : 'tag-orange'
+              "
               @click="handleVerifyClick(row)"
             >
-              {{ dictStore.getLabel('verify_status', row.verify_status) }}
+              {{ dictStore.getLabel("verify_status", row.verify_status) }}
             </span>
           </template>
         </el-table-column>
 
         <el-table-column label="断档预警" width="130" align="center">
           <template #default="{ row }">
-            <span v-if="!row.warning_status || row.warning_status === 0" class="text-gray-400 text-xs">—</span>
+            <span
+              v-if="!row.warning_status || row.warning_status === 0"
+              class="text-gray-400 text-xs"
+              >—</span
+            >
             <span
               v-else-if="row.warning_status === 1"
               class="tag tag-blue"
@@ -112,7 +164,7 @@
             <span
               v-else-if="row.warning_status === 3"
               class="tag tag-orange"
-              style="color: #d97706; background-color: #fef3c7;"
+              style="color: #d97706; background-color: #fef3c7"
               title="系统自动识别合同到期时间，在到期前2个月推送预警"
             >
               到期前2个月
@@ -128,9 +180,19 @@
         </el-table-column>
 
         <!-- 动态模块命中列：只展示查询库 contract_module_hits，不生成假关键词。 -->
-        <el-table-column v-for="module in modules" :key="module.module_key" :label="module.name" width="120" align="center">
+        <el-table-column
+          v-for="module in modules"
+          :key="module.module_key"
+          :label="module.name"
+          width="120"
+          align="center"
+        >
           <template #default="{ row }">
-            <span v-if="moduleHitText(row, module.module_key)" class="tag tag-green" style="font-size: 11px;">
+            <span
+              v-if="moduleHitText(row, module.module_key)"
+              class="tag tag-green"
+              style="font-size: 11px"
+            >
               {{ moduleHitText(row, module.module_key) }}
             </span>
             <span v-else class="text-gray-300 text-xs">—</span>
@@ -138,42 +200,65 @@
         </el-table-column>
 
         <!-- 操作列 (1:1 还原规则: 未核对更多只有删除; 已核对更多有原文件, 编辑, 删除) -->
-        <el-table-column label="操作" width="140" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button
-              type="primary"
-              link
-              size="small"
-              style="color: #1f1f1f;"
-              @click="handleActionClick(row)"
-            >
-              {{ row.verify_status === 1 ? '查看' : '核对' }}
-            </el-button>
+            <div class="flex items-center gap-2 h-6">
+              <el-button
+                type="primary"
+                link
+                size="small"
+                style="color: #1f1f1f"
+                @click="handleActionClick(row)"
+              >
+                {{ row.verify_status === 1 ? "查看" : "核对" }}
+              </el-button>
 
-            <el-dropdown trigger="click">
-              <span class="text-[#1f1f1f] cursor-pointer ml-2 text-xs">更多</span>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <!-- 未核对：更多只有【删除】 -->
-                  <template v-if="row.verify_status !== 1">
-                    <el-dropdown-item style="color: #F56C6C;" @click="handleDelete(row.id)">删除</el-dropdown-item>
-                  </template>
+              <el-dropdown trigger="click">
+                <span class="text-[#1f1f1f] cursor-pointer text-xs leading-6"
+                  >更多</span
+                >
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <!-- 未核对：更多只有【删除】 -->
+                    <template v-if="row.verify_status !== 1">
+                      <el-dropdown-item
+                        style="color: #f56c6c"
+                        @click="handleDelete(row.id)"
+                        >删除</el-dropdown-item
+                      >
+                    </template>
 
-                  <!-- 已核对：原文件与删除。合同内容以 PDF 解析→人工核对→正式库入库为唯一流程，不提供旧演示库编辑。 -->
-                  <template v-else>
-                    <el-dropdown-item @click="goToCompare(row.id)">原文件</el-dropdown-item>
-                    <el-dropdown-item divided style="color: #F56C6C;" @click="handleDelete(row.id)">删除</el-dropdown-item>
-                  </template>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+                    <!-- 已核对：支持下载原文件与删除。 -->
+                    <template v-else>
+                      <el-dropdown-item @click="editVerifiedContract(row)">编辑</el-dropdown-item>
+                      <el-dropdown-item @click="downloadOriginal(row)"
+                        >下载原文件</el-dropdown-item
+                      >
+                      <el-dropdown-item
+                        divided
+                        style="color: #f56c6c"
+                        @click="handleDelete(row.id)"
+                        >删除</el-dropdown-item
+                      >
+                    </template>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
           </template>
         </el-table-column>
       </el-table>
 
       <!-- 分页区域 -->
-      <div class="p-4 flex items-center justify-between border-t border-gray-100">
-        <span class="text-xs text-gray-500">共 {{ total }} 条记录，当前第 {{ page }}/{{ Math.ceil(total / pageSize) || 1 }} 页</span>
+      <div
+        class="p-4 flex items-center justify-between border-t border-gray-100"
+      >
+        <span class="text-xs text-gray-500"
+          >共 {{ total }} 条记录，当前第 {{ page }}/{{
+            Math.ceil(total / pageSize) || 1
+          }}
+          页</span
+        >
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
@@ -188,23 +273,22 @@
 
     <!-- 导入合同弹框组件 -->
     <ImportContractModal v-model="showImportModal" @success="loadData" />
-
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { useRouter } from 'vue-router';
-import { Search, Upload, Download } from '@element-plus/icons-vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { contractApi, type ContractModule } from '../api/contractApi';
-import { keywordApi, type KeywordItem } from '../api/keywordApi';
-import { useDictStore } from '../stores/dictStore';
-import { formatCurrency, formatDate } from '../utils/formatters';
-import { exportFullContractLedgerExcel } from '../utils/excelExporter';
-import { buildModuleFilters, hasModuleAiHit } from '../utils/moduleAi';
-import type { ContractLedger } from '../types';
-import ImportContractModal from '../components/modals/ImportContractModal.vue';
+import { ref, reactive, onMounted } from "vue";
+import { useRouter } from "vue-router";
+import { Search, Upload, Download } from "@element-plus/icons-vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { contractApi, type ContractModule } from "../api/contractApi";
+import { keywordApi, type KeywordItem } from "../api/keywordApi";
+import { useDictStore } from "../stores/dictStore";
+import { formatCurrency, formatDate } from "../utils/formatters";
+import { exportFullContractLedgerExcel } from "../utils/excelExporter";
+import { buildModuleFilters, hasModuleAiHit } from "../utils/moduleAi";
+import type { ContractLedger } from "../types";
+import ImportContractModal from "../components/modals/ImportContractModal.vue";
 
 const router = useRouter();
 const dictStore = useDictStore();
@@ -219,11 +303,11 @@ const pageSize = ref(10);
 const modules = ref<ContractModule[]>([]);
 
 const filters = reactive({
-  keyword: '',
-  contractStatus: '',
-  contractType: '',
-  hasAiKeyword: '',
-  verifyStatus: '',
+  keyword: "",
+  contractStatus: "",
+  contractType: "",
+  hasAiKeyword: "",
+  verifyStatus: "",
 });
 const moduleFilters = reactive<Record<string, string>>({});
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
@@ -234,12 +318,22 @@ onMounted(async () => {
     const res = await contractApi.getModules();
     if (res.code === 200) {
       modules.value = res.data.list;
-      modules.value.forEach((module) => { moduleFilters[module.module_key] ??= ''; });
+      modules.value.forEach((module) => {
+        moduleFilters[module.module_key] ??= "";
+      });
     }
     const keywords = await keywordApi.getList({ page: 1, pageSize: 200 });
     if (keywords.code === 200) {
-      keywords.data.list.forEach((item: KeywordItem) => keywordTerms.set(item.keyword_name, [item.keyword_name, ...(item.sub_words || [])]));
-      keywordOptions.value = keywords.data.list.map((item: KeywordItem) => ({ label: item.keyword_name, value: item.keyword_name }));
+      keywords.data.list.forEach((item: KeywordItem) =>
+        keywordTerms.set(item.keyword_name, [
+          item.keyword_name,
+          ...(item.sub_words || []),
+        ]),
+      );
+      keywordOptions.value = keywords.data.list.map((item: KeywordItem) => ({
+        label: item.keyword_name,
+        value: item.keyword_name,
+      }));
     }
   } finally {
     loadData();
@@ -268,18 +362,20 @@ async function loadData() {
   }
 }
 function handleReset() {
-  filters.keyword = '';
-  filters.contractStatus = '';
-  filters.contractType = '';
-  filters.hasAiKeyword = '';
-  filters.verifyStatus = '';
-  Object.keys(moduleFilters).forEach((key) => { moduleFilters[key] = ''; });
+  filters.keyword = "";
+  filters.contractStatus = "";
+  filters.contractType = "";
+  filters.hasAiKeyword = "";
+  filters.verifyStatus = "";
+  Object.keys(moduleFilters).forEach((key) => {
+    moduleFilters[key] = "";
+  });
   page.value = 1;
   loadData();
 }
 
 function moduleHitText(row: ContractLedger, moduleKey: string): string {
-  return hasModuleAiHit(row, moduleKey) ? 'AI' : '';
+  return hasModuleAiHit(row, moduleKey) ? "AI" : "";
 }
 
 function goToDetail(id: number) {
@@ -292,41 +388,61 @@ function goToCompare(id: number) {
 
 function handleVerifyClick(row: ContractLedger) {
   if (row.verify_status === 1) {
-    router.push({ path: '/verify', query: { id: String(row.id), readonly: 'true' } });
+    router.push({ path: "/verify", query: { id: String(row.id) } });
   } else {
     // 未核对：进行人工核对
-    router.push({ path: '/verify', query: { id: String(row.id) } });
+    router.push({ path: "/verify", query: { id: String(row.id) } });
   }
+}
+
+async function downloadOriginal(row: ContractLedger) {
+  const token = localStorage.getItem("contract_token") || "";
+  const response = await fetch(contractApi.getOriginalPdfUrl(row.id), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) return ElMessage.error("原文件下载失败");
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(await response.blob());
+  link.download = `${row.contract_no || "合同原文件"}.pdf`;
+  link.click();
+  URL.revokeObjectURL(link.href);
 }
 
 function handleActionClick(row: ContractLedger) {
   if (row.verify_status === 1) {
-    router.push({ path: '/verify', query: { id: String(row.id), readonly: 'true' } });
+    router.push({
+      path: "/verify",
+      query: { id: String(row.id), readonly: "true" },
+    });
   } else {
     // 未核对：进行人工核对
-    router.push({ path: '/verify', query: { id: String(row.id) } });
+    router.push({ path: "/verify", query: { id: String(row.id) } });
   }
+}
+
+function editVerifiedContract(row: ContractLedger) {
+  router.push({ path: "/verify", query: { id: String(row.id) } });
 }
 
 function handleDelete(id: number) {
   // 1:1 还原 demo.html deleteModal 弹窗文案与逻辑
   ElMessageBox.confirm(
-    '删除后合同数据将移入回收站，30天内可恢复。合同原件文件不受影响。',
-    '确定要删除这份合同吗？',
+    "删除后合同数据将移入回收站，30天内可恢复。合同原件文件不受影响。",
+    "确定要删除这份合同吗？",
     {
-      confirmButtonText: '确定删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    }
+      confirmButtonText: "确定删除",
+      cancelButtonText: "取消",
+      type: "warning",
+    },
   ).then(async () => {
     await contractApi.delete(id);
-    ElMessage.success('删除成功');
+    ElMessage.success("删除成功");
     loadData();
   });
 }
 
 async function handleExport() {
-  await exportFullContractLedgerExcel(tableData.value, '合同台账全量明细');
-  ElMessage.success('导出成功');
+  await exportFullContractLedgerExcel(tableData.value, "合同台账全量明细");
+  ElMessage.success("导出成功");
 }
 </script>
