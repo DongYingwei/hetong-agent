@@ -8,7 +8,7 @@ const router = new Router({ prefix: '/api/auth' });
 
 function getRoleName(roleNum) {
   if (roleNum === 0) return '管理员';
-  if (roleNum === 2) return '法务人员';
+  if (roleNum === 2) return '合同管理员';
   if (roleNum === 3) return '部门负责人';
   return '合同专员';
 }
