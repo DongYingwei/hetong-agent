@@ -10,12 +10,11 @@ CREATE TABLE IF NOT EXISTS sys_role_menu_permission (
 INSERT INTO sys_menu (name, type, parent_id, path, permission, sort, status)
 SELECT v.name, v.type, COALESCE(parent.id, 0), v.path, v.permission, v.sort, 1
 FROM (VALUES
-  ('合同管理', '目录', NULL::text, '/contract', '', 1),
-  ('合同台账', '菜单', '/contract', '/ledger', 'contract:ledger', 1),
-  ('订单台账', '菜单', '/contract', '/orders', 'contract:*', 2),
-  ('综合检索', '菜单', '/contract', '/agent-search', 'contract:search', 3),
-  ('关键词管理', '菜单', '/contract', '/keywords', 'contract:keywords', 4),
-  ('模块配置', '菜单', '/contract', '/sections', 'contract:sections', 5),
+  ('合同台账', '菜单', NULL::text, '/ledger', 'contract:ledger', 1),
+  ('订单台账', '菜单', NULL::text, '/orders', 'contract:*', 2),
+  ('综合检索', '菜单', NULL::text, '/agent-search', 'contract:search', 3),
+  ('关键词管理', '菜单', NULL::text, '/keywords', 'contract:keywords', 4),
+  ('模块配置', '菜单', NULL::text, '/sections', 'contract:sections', 5),
   ('系统管理', '目录', NULL::text, '/system', '', 90),
   ('菜单管理', '菜单', '/system', '/menu', 'system:menu', 1),
   ('首页配置', '菜单', '/system', '/homepage', 'system:homepage', 2),
