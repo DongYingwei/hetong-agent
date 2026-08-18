@@ -29,9 +29,9 @@
         </el-input>
 
         <el-select
-          v-model="moduleKeywords.role"
+          v-model="filters.roleAi"
           placeholder="项目名称"
-          clearable multiple collapse-tags
+          clearable
           style="width: 140px"
           @change="loadData"
         >
@@ -39,19 +39,19 @@
         </el-select>
 
         <el-select
-          v-model="moduleKeywords.service"
+          v-model="filters.serviceAi"
           placeholder="服务内容"
-          clearable multiple collapse-tags
+          clearable
           style="width: 140px"
           @change="loadData"
         >
           <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
 
-        <el-select v-model="moduleKeywords.tech" placeholder="技术要求" clearable multiple collapse-tags style="width: 140px" @change="loadData">
+        <el-select v-model="filters.techAi" placeholder="技术要求" clearable style="width: 140px" @change="loadData">
           <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <el-select v-model="moduleKeywords.staff" placeholder="人员要求" clearable multiple collapse-tags style="width: 140px" @change="loadData">
+        <el-select v-model="filters.staffAi" placeholder="人员要求" clearable style="width: 140px" @change="loadData">
           <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
 
@@ -203,12 +203,11 @@ const filters = reactive({
   keyword: '',
   roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
-const moduleKeywords = reactive<Record<string, string[]>>({ role: [], service: [], tech: [], staff: [] });
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
-onMounted(() => {
-  void loadKeywords();
+onMounted(async () => {
+  await loadKeywords();
   loadData();
 });
 async function loadKeywords() {
@@ -228,7 +227,7 @@ async function loadData() {
       keyword: filters.keyword,
       roleAi: filters.roleAi, serviceAi: filters.serviceAi,
       techAi: filters.techAi, staffAi: filters.staffAi,
-      roleKeywords: expandKeywords(moduleKeywords.role), serviceKeywords: expandKeywords(moduleKeywords.service), techKeywords: expandKeywords(moduleKeywords.tech), staffKeywords: expandKeywords(moduleKeywords.staff),
+      roleKeywords: expandKeyword(filters.roleAi), serviceKeywords: expandKeyword(filters.serviceAi), techKeywords: expandKeyword(filters.techAi), staffKeywords: expandKeyword(filters.staffAi),
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -238,12 +237,11 @@ async function loadData() {
     loading.value = false;
   }
 }
-function expandKeywords(values: string[]) { return [...new Set(values.flatMap((value) => keywordTerms.get(value) || [value]))].join('\u001f'); }
+function expandKeyword(value: string) { return (keywordTerms.get(value) || (value ? [value] : [])).join('\u001f'); }
 
 function handleReset() {
   filters.keyword = '';
   filters.roleAi = ''; filters.serviceAi = ''; filters.techAi = ''; filters.staffAi = '';
-  moduleKeywords.role = []; moduleKeywords.service = []; moduleKeywords.tech = []; moduleKeywords.staff = [];
   page.value = 1;
   loadData();
 }

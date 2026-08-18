@@ -33,7 +33,7 @@
         <el-select v-model="filters.verifyStatus" placeholder="维护状态" clearable style="width: 130px">
           <el-option v-for="item in dictStore.dictMap.verify_status" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
-        <el-select v-for="module in modules.filter((m) => ['role','service','tech','staff'].includes(m.module_key))" :key="module.module_key" v-model="moduleKeywords[module.module_key]" :placeholder="module.name" clearable multiple collapse-tags style="width: 150px">
+        <el-select v-for="module in modules.filter((m) => ['role','service','tech','staff'].includes(m.module_key))" :key="module.module_key" v-model="moduleFilters[module.module_key]" :placeholder="module.name" clearable style="width: 140px">
           <el-option v-for="item in keywordOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
         <el-button type="primary" @click="loadData">查询</el-button>
@@ -225,7 +225,7 @@ const filters = reactive({
   verifyStatus: '',
   roleAi: '', serviceAi: '', techAi: '', staffAi: '',
 });
-const moduleKeywords = reactive<Record<string, string[]>>({ role: [], service: [], tech: [], staff: [] });
+const moduleFilters = reactive<Record<string, string>>({ role: '', service: '', tech: '', staff: '' });
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
@@ -254,7 +254,7 @@ async function loadData() {
       contractType: filters.contractType,
       hasAiKeyword: filters.hasAiKeyword,
       verifyStatus: filters.verifyStatus,
-      roleKeywords: expandKeywords(moduleKeywords.role), serviceKeywords: expandKeywords(moduleKeywords.service), techKeywords: expandKeywords(moduleKeywords.tech), staffKeywords: expandKeywords(moduleKeywords.staff),
+      roleKeywords: expandKeyword(moduleFilters.role), serviceKeywords: expandKeyword(moduleFilters.service), techKeywords: expandKeyword(moduleFilters.tech), staffKeywords: expandKeyword(moduleFilters.staff),
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -264,7 +264,7 @@ async function loadData() {
     loading.value = false;
   }
 }
-function expandKeywords(values: string[]) { return [...new Set(values.flatMap((value) => keywordTerms.get(value) || [value]))].join('\u001f'); }
+function expandKeyword(value: string) { return (keywordTerms.get(value) || (value ? [value] : [])).join('\u001f'); }
 
 function handleReset() {
   filters.keyword = '';
@@ -272,7 +272,7 @@ function handleReset() {
   filters.contractType = '';
   filters.hasAiKeyword = '';
   filters.verifyStatus = '';
-  moduleKeywords.role = []; moduleKeywords.service = []; moduleKeywords.tech = []; moduleKeywords.staff = [];
+  moduleFilters.role = ''; moduleFilters.service = ''; moduleFilters.tech = ''; moduleFilters.staff = '';
   page.value = 1;
   loadData();
 }
