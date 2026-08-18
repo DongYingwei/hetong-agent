@@ -92,4 +92,13 @@ router.get('/info', async (ctx) => {
   ctx.success(u);
 });
 
+router.get('/permissions', async (ctx) => {
+  const roleCode = Number(ctx.state.user.role) === 0 ? 'admin'
+    : Number(ctx.state.user.role) === 2 ? 'contract_manager' : 'business_user';
+  const rows = await query(`SELECT m.path FROM sys_role_menu_permission p
+    JOIN sys_role r ON r.id=p.role_id JOIN sys_menu m ON m.id=p.menu_id
+    WHERE r.role_code=? AND r.delete_status=0 AND m.delete_status=0 AND m.status=1`, [roleCode]);
+  ctx.success({ paths: rows.map((row) => row.path) });
+});
+
 export default router;

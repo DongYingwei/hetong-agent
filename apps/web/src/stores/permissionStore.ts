@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { authApi } from '../api';
 
 export const usePermissionStore = defineStore('permission', () => {
+  const databasePaths = ref<string[] | null>(null);
   // 默认各角色的可访问菜单 ID 集合
   const defaultRolePerms: Record<string, number[]> = {
     // 管理员：包含所有 12 个菜单项
@@ -72,6 +74,7 @@ export const usePermissionStore = defineStore('permission', () => {
    */
   function hasPermission(roleNameOrKey?: string | number, path?: string): boolean {
     if (!path) return true;
+    if (databasePaths.value) return databasePaths.value.includes(path);
     const menuId = menuPathMap[path];
     if (!menuId) return true; // 未在映射表中的路由默认放行
 
@@ -104,9 +107,17 @@ export const usePermissionStore = defineStore('permission', () => {
     return allowedMenuIds.includes(menuId);
   }
 
+  async function loadPermissions() {
+    try {
+      const res = await authApi.getPermissions();
+      if (res.code === 200) databasePaths.value = res.data.paths || [];
+    } catch { databasePaths.value = null; }
+  }
+
   return {
     rolePermissions,
     setRolePermissions,
     hasPermission,
+    loadPermissions,
   };
 });

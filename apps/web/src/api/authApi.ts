@@ -15,4 +15,7 @@ export const authApi = {
   getUserInfo(): Promise<ApiResponse<User>> {
     return request.get('/auth/info');
   },
+  getPermissions(): Promise<ApiResponse<{ paths: string[] }>> {
+    return request.get('/auth/permissions');
+  },
 };

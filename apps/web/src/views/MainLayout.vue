@@ -232,6 +232,7 @@ const hasAnySystemMenu = computed(() => {
 
 onMounted(() => {
   dictStore.fetchDictInit();
+  permissionStore.loadPermissions();
 });
 
 function handleLogout() {
