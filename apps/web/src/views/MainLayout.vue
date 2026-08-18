@@ -66,6 +66,7 @@
           <el-icon class="text-lg"><Collection /></el-icon>
           <span>模块配置</span>
         </router-link>
+        <router-link v-if="currentRole === '管理员'" to="/contract-order-links" class="flex items-center gap-3 px-3 h-10 rounded-lg cursor-pointer transition-colors text-[#1f1f1f] font-medium select-none" :class="$route.path === '/contract-order-links' ? 'bg-[#f8a42b] !text-white font-semibold hover:bg-[#e5931a]' : 'hover:bg-[#faeae1]'"><el-icon class="text-lg"><Connection /></el-icon><span>合同订单关联</span></router-link>
 
         <!-- 一级 6：系统管理 (折叠分组) -->
         <div v-if="hasAnySystemMenu" class="pt-1">
@@ -187,6 +188,7 @@ import {
   ChatDotSquare,
   PriceTag,
   Collection,
+  Connection,
   Menu as MenuIcon,
   HomeFilled,
   User as UserIcon,
@@ -232,7 +234,9 @@ const hasAnySystemMenu = computed(() => {
 
 onMounted(() => {
   dictStore.fetchDictInit();
-  permissionStore.loadPermissions();
+  // Pinia 在 Vite 热更新期间可能暂时保留旧 Store 实例；旧实例没有该方法时
+  // 不应阻断整个页面初始化。完整刷新后会正常从数据库加载菜单权限。
+  void permissionStore.loadPermissions?.();
 });
 
 function handleLogout() {

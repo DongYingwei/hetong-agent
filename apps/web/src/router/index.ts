@@ -36,6 +36,7 @@ const routes = [
       { path: 'compare', name: 'compare', component: CompareView },
       { path: 'keywords', name: 'keywords', component: KeywordsView },
       { path: 'sections', name: 'sections', component: SectionsView },
+      { path: 'contract-order-links', name: 'contract-order-links', component: () => import('../views/ContractOrderLinksView.vue') },
       { path: 'agent-search', name: 'agent-search', component: AgentSearchView },
 
       // 系统管理 7 个二级页面 (1:1 匹配 demo2.html)

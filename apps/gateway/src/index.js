@@ -25,6 +25,7 @@ import roleRoutes from './routes/role.js';
 import departmentRoutes from './routes/department.js';
 import orderRoutes from './routes/order.js';
 import keywordRescanRoutes from './routes/keywordRescan.js';
+import contractOrderLinkRoutes from './routes/contractOrderLink.js';
 import { resumeKeywordRescanJobs } from './services/keywordRescanService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -67,6 +68,7 @@ app.use(roleRoutes.routes()).use(roleRoutes.allowedMethods());
 app.use(departmentRoutes.routes()).use(departmentRoutes.allowedMethods());
 app.use(orderRoutes.routes()).use(orderRoutes.allowedMethods());
 app.use(keywordRescanRoutes.routes()).use(keywordRescanRoutes.allowedMethods());
+app.use(contractOrderLinkRoutes.routes()).use(contractOrderLinkRoutes.allowedMethods());
 
 // 5. 健康检查
 app.use(async (ctx, next) => {
