@@ -41,7 +41,7 @@
 
 `md-file`、`md-epms` 是当前真实目录名，部署后不得改名，否则会破坏数据库中的来源路径映射。
 
-## 3. 已完成迁移记录（2026-08-18）
+## 3. 已完成迁移记录（截至 2026-08-19）
 
 | 项目 | 结果 |
 |---|---:|
@@ -49,7 +49,7 @@
 | 合同来源文件 | 76 条 |
 | 合同 PDF | 服务器已有 81 个（保留，不删除） |
 | 合同 Markdown | 76 个，`manifest.json` 已存在 |
-| 订单台账 `contract_assistant.sys_order` | 5,213 条 |
+| 订单台账 `contract_assistant.sys_order` | 9,815 条（审核时间全量补全文件重导后） |
 | 订单 Markdown | 已迁移至 `/data/jingxiaoguan/epms/md-epms` |
 
 ### 数据库纠正记录
@@ -72,6 +72,79 @@ jingxiaoguan-milvus     milvus:v2.4.5
 ```
 
 禁止操作或复用服务器既有的 Dify、旧 Milvus、旧 PostgreSQL 容器。
+
+### 4.1 应用版本发布与前端服务（内部验收）
+
+当前 `/opt/jingxiaoguan/current` 是通过软链接指向的**发布快照**，不保证包含 `.git` 目录。因此不能在该目录中直接执行 `git pull`；每次发布必须创建一个新的 `releases/<版本>` 目录，构建成功后才切换软链接。
+
+1. 在目标服务器先验证能够访问 GitLab（私有仓库需要已配置的 Git 凭据）：
+
+   ```bash
+   git ls-remote http://221.178.153.117:62000/weidongying/jingxiaoguan.git HEAD
+   ```
+
+2. 克隆指定发布版本并安装 Node 依赖。以下示例的版本号应替换成实际 Git 提交号：
+
+   ```bash
+   RELEASE_DIR=/opt/jingxiaoguan/releases/20260819-46d84a3b
+
+   git clone --branch master \
+     http://221.178.153.117:62000/weidongying/jingxiaoguan.git \
+     "$RELEASE_DIR"
+
+   cd "$RELEASE_DIR/apps/gateway" && npm ci
+   cd "$RELEASE_DIR/apps/query-agent" && npm ci
+   cd "$RELEASE_DIR/apps/web" && npm ci && npm run build
+   ```
+
+   `npm run build` 同时执行 `vue-tsc --build`；必须成功才允许发布。Vite 的“大于 500 kB”提示是性能优化警告，不阻断发布。
+
+3. 构建成功后切换版本并重启后端服务：
+
+   ```bash
+   ln -sfn /opt/jingxiaoguan/releases/20260819-46d84a3b \
+     /opt/jingxiaoguan/current
+
+   sudo systemctl restart \
+     jingxiaoguan-gateway \
+     jingxiaoguan-parse \
+     jingxiaoguan-query-agent
+
+   sudo systemctl --no-pager --full status \
+     jingxiaoguan-gateway \
+     jingxiaoguan-parse \
+     jingxiaoguan-query-agent
+   ```
+
+4. `~/jingxiaoguan-infra/compose.yml` 仅管理 PostgreSQL、Milvus、MinIO 和 etcd；前端必须额外配置 `web` 服务。将下列内容添加到 `services:` 下（与 `postgres` 同级）：
+
+   ```yaml
+   web:
+     image: nginx:1.27-alpine
+     container_name: jingxiaoguan-web
+     restart: unless-stopped
+     ports:
+       - "5174:5174"
+     extra_hosts:
+       - "host.docker.internal:host-gateway"
+     volumes:
+       - /opt/jingxiaoguan/current/apps/web/dist:/usr/share/nginx/html:ro
+       - /opt/jingxiaoguan/current/deploy/nginx/jingxiaoguan.conf:/etc/nginx/conf.d/default.conf:ro
+   ```
+
+   创建或更新前端容器并验证：
+
+   ```bash
+   cd ~/jingxiaoguan-infra
+   docker compose up -d web
+   docker compose ps
+   curl -I http://127.0.0.1:5174/
+   curl http://127.0.0.1:5174/api/health
+   ```
+
+   Nginx 的配置文件来自 `deploy/nginx/jingxiaoguan.conf`：前端静态文件由 `dist` 提供，`/api/` 转发到宿主机 Gateway 的 `3002` 端口。每次切换 `current` 后，执行 `docker compose up -d --force-recreate web`，使容器重新绑定新版本的 `dist` 目录。
+
+5. 浏览器验收地址为 `http://192.168.101.217:5174`。验收期间保留旧发布目录；失败时只需将 `current` 切回上一版本并依次重启三项 systemd 服务和 `web` 容器。
 
 ## 5. 数据迁移标准流程
 
@@ -105,15 +178,12 @@ MARKDOWN_ROOT=/data/jingxiaoguan/contracts/md-file
 
 不得沿用开发环境的 `5433`、`pw`、默认 JWT 密钥或泄漏过的 API Key。
 
-## 7. 当前未完成事项
+## 7. 当前验收前事项
 
-1. 修复前端 TypeScript 构建错误，`apps/web` 的 `npm run build` 通过后方可发布。
-2. 配置 Query Agent、EPMS Sync 的生产环境变量并验证内网模型连通性。
-3. 配置 systemd：Gateway、Parse Service、Query Agent 及 EPMS Sync timer（每日 02:30）。
-4. 配置独立 Nginx 容器，宿主机映射 `5174`。
-5. 重建并验证 59 份已确认合同的 Milvus 向量。
-6. 验收：登录、合同/订单台账、原文件、关键词、综合检索、导出、EPMS 同步。
-7. 文件夹合同包上传尚未开发：目标为单次一合同包、支持嵌套目录，PDF 合并解析，Word 仅附件保存/下载。
+1. 按 4.1 配置并启动 `web` Nginx 容器，确认 `5174` 能访问前端且 `/api/health` 经反代成功。
+2. 核验 59 份已确认合同的 Milvus 向量，并完成登录、合同/订单台账、多个原文件切换预览、关键词、综合检索、导出和 EPMS 同步验收。
+3. 确认 `jingxiaoguan-epms-sync.timer` 已启用且 `epms-sync.env` 中的 `MD_DIR` 为服务器路径 `/data/jingxiaoguan/epms/md-epms`，不能保留开发机路径。
+4. 合同上传现已支持一次选择多个文件作为同一合同包：所有 PDF 合并解析为一个合同草稿，Word 仅保存为附件；暂不支持浏览器直接上传文件夹或嵌套目录。
 
 ## 8. 回滚原则
 
