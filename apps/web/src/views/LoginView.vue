@@ -3,7 +3,7 @@
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
       <!-- Header / Logo -->
       <div class="flex flex-col items-center mb-8">
-        <div class="w-14 h-14 rounded-xl bg-[#049667] flex items-center justify-center shadow-lg mb-3">
+        <div class="w-14 h-14 rounded-xl bg-[#f8a42b] flex items-center justify-center shadow-lg mb-3">
           <svg class="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
             <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
           </svg>
@@ -32,13 +32,13 @@
 
         <div class="flex items-center justify-between text-xs text-gray-500 mb-6">
           <el-checkbox v-model="rememberMe">记住密码</el-checkbox>
-          <span class="text-[#049667] cursor-pointer hover:underline">联系管理员重置密码</span>
+          <span class="text-[#e5931a] cursor-pointer hover:underline">联系管理员重置密码</span>
         </div>
 
         <el-button
           type="primary"
           class="w-full h-11 text-base rounded-lg"
-          style="background-color: #049667; border-color: #049667;"
+          style="background-color: #f8a42b; border-color: #f8a42b;"
           :loading="loading"
           @click="handleLogin"
         >
