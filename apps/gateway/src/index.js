@@ -73,7 +73,8 @@ app.use(contractOrderLinkRoutes.routes()).use(contractOrderLinkRoutes.allowedMet
 
 // 5. 健康检查
 app.use(async (ctx, next) => {
-  if (ctx.path === '/health') {
+  // 宿主机直连用 /health；经 Nginx 的同源反代保留 /api 前缀。
+  if (ctx.path === '/health' || ctx.path === '/api/health') {
     ctx.success({ status: 'ok', time: new Date() }, 'Contract Assistant Koa Server is running');
     return;
   }
