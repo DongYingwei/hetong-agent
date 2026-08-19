@@ -18,7 +18,6 @@
         <input
           ref="fileInputRef"
           type="file"
-          multiple
           accept=".pdf,.doc,.docx"
           class="hidden"
           @change="handleFileSelect"
@@ -26,8 +25,8 @@
         <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
-        <p class="text-sm font-medium text-gray-700">选择合同文件，或拖拽文件到此处</p>
-        <p class="text-xs text-gray-400 mt-1.5">支持一次选择多个 PDF/Word 文件，将分别解析为草稿；单文件不超过 300MB</p>
+        <p class="text-sm font-medium text-gray-700">选择一个合同文件，或拖拽文件到此处</p>
+        <p class="text-xs text-gray-400 mt-1.5">每次仅上传一个 PDF/Word 文件；单文件不超过 300MB</p>
       </div>
 
       <!-- 已选择待解析的文件列表 -->
@@ -192,16 +191,31 @@ function triggerFileSelect() {
 function handleFileSelect(e: Event) {
   const target = e.target as HTMLInputElement;
   if (target.files) {
-    const files = Array.from(target.files);
-    selectedFiles.value.push(...files);
+    selectSingleFile(Array.from(target.files));
+    // 清空后可重复选择同一个文件。
+    target.value = '';
   }
 }
 
 function handleFileDrop(e: DragEvent) {
   if (e.dataTransfer?.files) {
-    const files = Array.from(e.dataTransfer.files);
-    selectedFiles.value.push(...files);
+    selectSingleFile(Array.from(e.dataTransfer.files));
   }
+}
+
+function selectSingleFile(files: File[]) {
+  const file = files[0];
+  if (!file) return;
+  if (files.length > 1) ElMessage.info('一次仅支持上传一个合同文件，已选择第一份');
+  if (file.size > 300 * 1024 * 1024) {
+    ElMessage.error('单个合同文件不能超过 300MB');
+    return;
+  }
+  if (!/\.(pdf|doc|docx)$/i.test(file.name)) {
+    ElMessage.error('仅支持 PDF、DOC、DOCX 格式的合同文件');
+    return;
+  }
+  selectedFiles.value = [file];
 }
 
 function removeFile(index: number) {
