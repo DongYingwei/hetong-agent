@@ -1070,12 +1070,14 @@ function switchFileTab(index: number) {
   activeTabIndex.value = index;
 }
 
-async function removeKeyword(sectionKey: string, index: number) {
+async function removeKeyword(sectionKey: string, index: string | number) {
   if (isReadOnly.value) return;
+  const keywordIndex = Number(index);
+  if (!Number.isInteger(keywordIndex) || keywordIndex < 0) return;
   const keyword =
     currentForm.value.keywords[
       sectionKey as keyof typeof currentForm.value.keywords
-    ][index];
+    ][keywordIndex];
   const moduleMap: Record<string, string> = {
     服务内容: "service",
     技术要求: "tech",
@@ -1094,7 +1096,7 @@ async function removeKeyword(sectionKey: string, index: number) {
   }
   currentForm.value.keywords[
     sectionKey as keyof typeof currentForm.value.keywords
-  ].splice(index, 1);
+  ].splice(keywordIndex, 1);
 }
 
 function addKeywordPrompt(sectionKey: string) {
