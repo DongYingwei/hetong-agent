@@ -2,17 +2,10 @@ import axios from 'axios';
 import { ElMessage } from 'element-plus';
 
 /**
- * 动态获取 API 根地址 (解决局域网/内网其他电脑访问时请求 localhost 导致 Network Error 问题)
- * 网关端口默认 3002（3001 被本机其他服务占用）；可用 VITE_API_PORT 覆盖。
+ * 浏览器始终访问同源的 /api：开发环境由 Vite proxy 转发，生产环境由 Nginx 转发。
+ * 不能让浏览器直接拼接 :3002，否则在仅开放 5174 的部署环境会绕过反向代理而失败。
  */
-const API_PORT = import.meta.env.VITE_API_PORT || '3002';
-const getBaseUrl = () => {
-  if (typeof window !== 'undefined' && window.location && window.location.hostname) {
-    const host = window.location.hostname;
-    return `http://${host}:${API_PORT}/api`;
-  }
-  return `http://localhost:${API_PORT}/api`;
-};
+const getBaseUrl = () => import.meta.env.VITE_API_BASE_URL || '/api';
 
 /**
  * 统一 Axios 网络请求实例封装
