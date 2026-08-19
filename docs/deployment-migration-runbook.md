@@ -50,7 +50,7 @@
 | 合同 PDF | 服务器已有 81 个（保留，不删除） |
 | 合同 Markdown | 76 个，`manifest.json` 已存在 |
 | 订单台账 `contract_assistant.sys_order` | 9,815 条（审核时间全量补全文件重导后） |
-| 订单 AI 四模块分析 | 336 条完成；2 条 Qwen JSON 格式失败，待以 DeepSeek 定向重试 |
+| 订单 AI 四模块分析 | 历史统计 336 条；两个 Qwen JSON 失败订单已用 DeepSeek 定向重试，发布后以 `order_module_hits` 实际计数复核 |
 | 订单 Markdown | 已迁移至 `/data/jingxiaoguan/epms/md-epms` |
 
 ### 数据库纠正记录
@@ -76,7 +76,7 @@ jingxiaoguan-milvus     milvus:v2.4.5
 
 ### 4.1 应用版本发布与前端服务（内部验收）
 
-当前 `/opt/jingxiaoguan/current` 是通过软链接指向的**发布快照**，不保证包含 `.git` 目录。因此不能在该目录中直接执行 `git pull`；每次发布必须创建一个新的 `releases/<版本>` 目录，构建成功后才切换软链接。
+标准发布使用新的 `releases/<版本>` 目录，构建成功后才切换 `current` 软链接。当前验收目录可能是一个带 `.git` 的克隆，可用于紧急 `git pull` 修复；常规发布仍不得依赖原地修改。
 
 1. 在目标服务器先验证能够访问 GitLab（私有仓库需要已配置的 Git 凭据）：
 
@@ -125,35 +125,26 @@ jingxiaoguan-milvus     milvus:v2.4.5
      < "$RELEASE_DIR/apps/gateway/scripts/migrations/014_agent_session_memory.sql"
    ```
 
-4. `~/jingxiaoguan-infra/compose.yml` 仅管理 PostgreSQL、Milvus、MinIO 和 etcd；前端必须额外配置 `web` 服务。将下列内容添加到 `services:` 下（与 `postgres` 同级）：
-
-   ```yaml
-   web:
-     image: nginx:1.27-alpine
-     container_name: jingxiaoguan-web
-     restart: unless-stopped
-     ports:
-       - "5174:5174"
-     extra_hosts:
-       - "host.docker.internal:host-gateway"
-     volumes:
-       - /opt/jingxiaoguan/current/apps/web/dist:/usr/share/nginx/html:ro
-       - /opt/jingxiaoguan/current/deploy/nginx/jingxiaoguan.conf:/etc/nginx/conf.d/default.conf:ro
-   ```
-
-   创建或更新前端容器并验证：
+4. `~/jingxiaoguan-infra/compose.yml` 当前只管理 PostgreSQL、Milvus、MinIO 和 etcd，**没有 `web` 服务**。前端以独立容器 `jingxiaoguan-web` 运行；每次切换 `current` 或重建 `dist` 后，按下列命令重建：
 
    ```bash
-   cd ~/jingxiaoguan-infra
-   docker compose up -d web
-   docker compose ps
+   docker rm -f jingxiaoguan-web
+   docker run -d \
+     --name jingxiaoguan-web \
+     --restart unless-stopped \
+     -p 5174:5174 \
+     --add-host host.docker.internal:host-gateway \
+     -v /opt/jingxiaoguan/current/apps/web/dist:/usr/share/nginx/html:ro \
+     -v /opt/jingxiaoguan/current/deploy/nginx/jingxiaoguan.conf:/etc/nginx/conf.d/default.conf:ro \
+     nginx:1.27-alpine
+
    curl -I http://127.0.0.1:5174/
-   curl http://127.0.0.1:5174/api/health
+   curl -sS -w '\\nHTTP=%{http_code}\\n' http://127.0.0.1:5174/api/health
    ```
 
-   Nginx 的配置文件来自 `deploy/nginx/jingxiaoguan.conf`：前端静态文件由 `dist` 提供，`/api/` 转发到宿主机 Gateway 的 `3002` 端口。`proxy_pass` **不得以 `/` 结尾**，否则 Nginx 会剥掉 `/api/`，将 `/api/contract/list` 错误转发为 `/contract/list` 并造成连续 404。每次切换 `current` 后，执行 `docker compose up -d --force-recreate web`，使容器重新绑定新版本的 `dist` 目录。
+   Nginx 的配置文件来自 `deploy/nginx/jingxiaoguan.conf`：前端静态文件由 `dist` 提供，`/api/` 转发到宿主机 Gateway 的 `3002` 端口。`proxy_pass` **不得以 `/` 结尾**，否则 Nginx 会剥掉 `/api/`，将 `/api/contract/list` 错误转发为 `/contract/list` 并造成连续 404。未登录时 `/api/health` 可能在 HTTP 200 响应中给出业务体 401，这不是反代失败。
 
-5. 浏览器验收地址为 `http://192.168.101.217:5174`。验收期间保留旧发布目录；失败时只需将 `current` 切回上一版本并依次重启三项 systemd 服务和 `web` 容器。
+5. 浏览器验收地址为 `http://192.168.101.217:5174`。验收期间保留旧发布目录；失败时只需将 `current` 切回上一版本并依次重启三项 systemd 服务和 `jingxiaoguan-web` 容器。
 
 ## 5. 数据迁移标准流程
 
@@ -217,10 +208,10 @@ MARKDOWN_ROOT=/data/jingxiaoguan/contracts/md-file
 
 ## 7. 当前验收前事项
 
-1. 按 4.1 配置并启动 `web` Nginx 容器，确认 `5174` 能访问前端且 `/api/health` 经反代成功。
+1. 按 4.1 重建 `jingxiaoguan-web` Nginx 容器，确认 `5174` 能访问前端且 `/api/health` 经反代成功。
 2. 核验 59 份已确认合同的 Milvus 向量，并完成登录、合同/订单台账、多个原文件切换预览、关键词、综合检索、导出和 EPMS 同步验收。
 3. 确认 `jingxiaoguan-epms-sync.timer` 已启用且 `epms-sync.env` 中的 `MD_DIR` 为服务器路径 `/data/jingxiaoguan/epms/md-epms`，不能保留开发机路径。
-4. 合同上传现已支持一次选择多个文件作为同一合同包：所有 PDF 合并解析为一个合同草稿，Word 仅保存为附件；暂不支持浏览器直接上传文件夹或嵌套目录。
+4. 合同上传现已支持一次选择多个文件作为同一合同包；暂不支持浏览器直接上传文件夹或嵌套目录。当前上传仅保存、预览和下载附件，不自动解析或合并为合同草稿。
 
 ## 8. 回滚原则
 

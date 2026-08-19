@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { chat } from '../services/agentService.js';
 import { query, queryRead } from '../config/db.js';
 import { classifySearch, harnessInstruction, MAX_SEARCH_MESSAGE_CHARS } from '../services/searchHarness.js';
+import { constraintsInstruction, extractSearchConstraints, filterRecordsByConstraints } from '../services/searchConstraints.js';
 
 const router = new Router({ prefix: '/api/agent' });
 const SESSION_RETENTION_DAYS = 30;
@@ -287,7 +288,9 @@ router.post('/chat', async (ctx) => {
     await query('UPDATE agent_sessions SET context_summary=? WHERE id=?', [JSON.stringify(updateFactSummary(session.context_summary, message, decision, [])), session.id]);
     return ctx.success({ sessionId: session.id, ...response });
   }
-  const result = await chat(String(message).trim(), history, harnessInstruction(decision.kind));
+  const constraints = extractSearchConstraints(message);
+  const modelInstruction = [harnessInstruction(decision.kind), constraintsInstruction(constraints)].filter(Boolean).join('\n');
+  const result = await chat(String(message).trim(), history, modelInstruction);
   if (!result.success) return ctx.fail(result.error || '智能体处理失败', result.code || 500);
 
   // 混合业务统计由 CoreMind 的受控工具完成；不走自由 SQL，也不把合同与订单误混为同一台账。
@@ -316,12 +319,18 @@ router.post('/chat', async (ctx) => {
 
   const entity = decision.kind === 'order-sql' ? 'order' : 'contract';
   const refs = collectRefs(result, entity);
-  const records = entity === 'order' ? await loadOrders(refs) : await loadContracts(refs);
+  const candidateRecords = entity === 'order' ? await loadOrders(refs) : await loadContracts(refs);
+  // SQL 是模型生成的候选集。对用户明确说出的合同台账条件做最终校验，
+  // 防止模型漏写 WHERE 后把“软件”等不符合考核线的合同展示给用户。
+  const records = filterRecordsByConstraints(candidateRecords, constraints);
+  const content = records.length === candidateRecords.length
+    ? stripInternalSql(result.content)
+    : `已按您明确的台账条件复核，返回 ${records.length} 条${entity === 'order' ? '订单' : '合同'}；完整明细和金额汇总如下。`;
   const summary = entity === 'order'
     ? summarizeOrders(records)
     : summarizeContracts(records, result.citations?.length ? 'rag' : 'sql');
   const response = {
-    content: stripInternalSql(result.content),
+    content,
     entity,
     // 仅首屏 5 条完整台账；完整 ID 集持久化于 result_data，供展开与导出分页读取。
     records: records.slice(0, 5),
