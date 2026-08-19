@@ -15,7 +15,7 @@
         <div class="grid grid-cols-4 gap-2 text-xs">
           <div v-for="m in modules" :key="m.module_key" class="border rounded-lg p-3">
             <div class="text-gray-500">{{ m.name }}</div>
-            <span :class="hit(m.module_key) ? 'tag tag-green' : 'text-gray-400'">{{ hit(m.module_key) ? 'AI' : '未命中' }}</span>
+            <span :class="hit(m.module_key) ? 'tag tag-green' : 'text-gray-400'">{{ hit(m.module_key) ? 'AI' : '—' }}</span>
           </div>
         </div>
       </section>

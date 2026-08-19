@@ -44,7 +44,7 @@
               ><span
                 class="float-right tag"
                 :class="hit(m.module_key) ? 'tag-green' : 'tag-gray'"
-                >{{ hit(m.module_key) ? "AI" : "未命中" }}</span
+                >{{ hit(m.module_key) ? "AI" : "—" }}</span
               >
               <p class="mt-3">
                 {{ words(m.module_key) || "该板块未识别到AI关键词" }}

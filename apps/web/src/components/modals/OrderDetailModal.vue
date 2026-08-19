@@ -82,14 +82,14 @@
         <h4 class="text-xs font-semibold text-gray-400 mb-3 pb-1.5 border-b border-gray-100">订单金额</h4>
         <div class="grid grid-cols-2 gap-x-5 gap-y-3">
           <div><label class="text-xs text-gray-400">订单状态</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_status || '执行中' }}</div></div>
-          <div><label class="text-xs text-gray-400">订单税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRate(order.tax_rate) }}%</div></div>
+          <div><label class="text-xs text-gray-400">订单税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRateLabel(order.tax_rate) }}</div></div>
           <div><label class="text-xs text-gray-400">订单含税总额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrency(order.amount) }}</div></div>
           <div><label class="text-xs text-gray-400">订单不含税总额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrency(order.amount_ex_tax || order.amount * 0.94) }}</div></div>
           <div><label class="text-xs text-gray-400">订单明细单号</label><div class="text-sm text-[#1A1A1A] font-mono mt-0.5">{{ order.detail_order_no || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">客方订单明细单号</label><div class="text-sm text-gray-400 mt-0.5">{{ order.customer_detail_order_no || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">赎期(天)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.redemption_days ?? 0 }}</div></div>
           <div><label class="text-xs text-gray-400">是否末单</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.is_last_order || '否' }}</div></div>
-          <div><label class="text-xs text-gray-400">明细税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRate(order.detail_tax_rate ?? order.tax_rate) }}%</div></div>
+          <div><label class="text-xs text-gray-400">明细税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRateLabel(order.detail_tax_rate ?? order.tax_rate) }}</div></div>
           <div><label class="text-xs text-gray-400">明细含税金额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrency(order.detail_amount ?? order.amount) }}</div></div>
           <div><label class="text-xs text-gray-400">明细不含税金额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrency(order.detail_amount_ex_tax || order.amount * 0.94) }}</div></div>
         </div>
@@ -265,6 +265,7 @@ const editableSections: Array<{ name: string; fields: EditableField[] }> = [
     { key: 'updater', label: '更新人' }, { key: 'update_time', label: '更新时间' }, { key: 'auditor', label: '审核人' }, { key: 'audit_time', label: '审核时间' },
   ] },
 ];
+const numericFields = editableSections.flatMap((section) => section.fields).filter((field) => field.kind === 'number');
 const editingSections = ref(editableSections.map((section) => section.name));
 const editForm = reactive<Record<string, unknown>>({});
 const aiModules = [
@@ -301,7 +302,7 @@ function beginEdit() {
     editForm[field.key] = field.kind === 'date' && value
       ? String(value).slice(0, 10)
       : field.key === 'tax_rate' || field.key === 'detail_tax_rate'
-        ? formatTaxRate(value)
+        ? (formatTaxRate(value) ?? '')
         : (value ?? null);
   }
   editingSections.value = editableSections.map((section) => section.name);
@@ -312,14 +313,15 @@ async function saveEdit() {
   saving.value = true;
   try {
     const payload: Record<string, unknown> = Object.fromEntries(
-      Object.entries(editForm).map(([key, value]) => [key, value === '' ? null : value]),
+      Object.entries(editForm).map(([key, value]) => [key, typeof value === 'string' && value.trim() === '' ? null : value]),
     );
-    for (const key of ['tax_rate', 'detail_tax_rate']) {
-      const value = payload[key];
+    for (const field of numericFields) {
+      const value = payload[field.key];
       if (value === null || value === undefined) continue;
-      const rate = Number(value);
-      if (!Number.isFinite(rate)) throw new Error(`${key === 'detail_tax_rate' ? '明细税率' : '订单税率'}必须为数字`);
-      payload[key] = rate.toFixed(4);
+      const numberValue = Number(String(value).trim());
+      if (!Number.isFinite(numberValue)) throw new Error(`${field.label}必须为数字`);
+      if (field.precision === 0 && !Number.isInteger(numberValue)) throw new Error(`${field.label}必须为整数`);
+      payload[field.key] = field.precision === 4 ? numberValue.toFixed(4) : numberValue;
     }
     const res = await orderApi.update(props.order.id, payload as Partial<OrderLedger>);
     if (res.code !== 200) throw new Error(res.msg);
@@ -335,10 +337,15 @@ async function saveEdit() {
   }
 }
 
-function formatTaxRate(value: unknown): string {
-  if (value === null || value === undefined || value === '') return '—';
+function formatTaxRate(value: unknown): string | null {
+  if (value === null || value === undefined || value === '') return null;
   const rate = Number(value);
   return Number.isFinite(rate) ? rate.toFixed(4) : String(value);
+}
+
+function formatTaxRateLabel(value: unknown): string {
+  const rate = formatTaxRate(value);
+  return rate === null ? '—' : `${rate}%`;
 }
 
 function moduleHit(key: string) {
