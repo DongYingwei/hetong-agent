@@ -917,7 +917,8 @@ onMounted(async () => {
         ]);
         if (hitRes.code === 200) {
           keywordHits.value = hitRes.data.list || [];
-          const modMap: Record<string, string> = {
+          type KeywordSection = "服务内容" | "技术要求" | "项目名称" | "人员需求";
+          const modMap: Record<string, KeywordSection> = {
             service: "服务内容",
             tech: "技术要求",
             role: "项目名称",
@@ -933,9 +934,7 @@ onMounted(async () => {
           for (const hit of keywordHits.value) {
             const section = hit.module_key ? modMap[hit.module_key] : undefined;
             if (
-              section &&
-              grouped[section] &&
-              !grouped[section].includes(hit.keyword_name)
+              section && !grouped[section].includes(hit.keyword_name)
             )
               grouped[section].push(hit.keyword_name);
           }
@@ -1063,7 +1062,7 @@ function addKeywordPrompt(sectionKey: string) {
         return;
       }
       if (!kwList.includes(keyword)) {
-        if (targetId.value && keywordId) {
+        if (targetId.value && keywordId && moduleKey) {
           contractApi
             .saveKeywordOverride(targetId.value, {
               module_key: moduleKey,
