@@ -815,6 +815,21 @@ const fileTabs = ref([
 ]);
 
 onMounted(async () => {
+  // 不允许接口失败时回退展示原型合同；核对页始终从空表单开始。
+  const initialTab = fileTabs.value[0];
+  if (initialTab) {
+    fileTabs.value = [initialTab];
+    initialTab.id = 0;
+    initialTab.fileName = '待加载合同';
+    initialTab.verified = false;
+    Object.assign(initialTab.form, {
+      contractNo: '', customerName: '', contractName: '', assessmentLine: '', bidNo: '',
+      mainContractNo: '', frameworkShortName: '', customerContractNo: '', signingEntity: '',
+      contractType: '', signDate: '', startDate: '', endDate: '', amountAttr: '', amount: '',
+      taxRate: '', settlementTerms: '', contractStatus: '',
+      keywords: { 服务内容: [], 技术要求: [], 项目名称: [], 人员需求: [] },
+    });
+  }
   // 解析草稿模式：从 /api/parse/draft 读抽取字段供人工核对（优先于运营库模式）。
   if (draftId.value) {
     try {
@@ -862,6 +877,13 @@ onMounted(async () => {
             kw[name] = String(h.keywords).split(",").filter(Boolean);
         }
         form.keywords = kw;
+        const sourceRes = await parseApi.getDraftSourceFiles(res.data.draft_id);
+        if (sourceRes.code === 200) {
+          pdfSources.value = sourceRes.data.list || [];
+          selectedPdfSourceId.value = pdfSources.value[0]?.id;
+          if (pdfSources.value[0]) tab.fileName = pdfSources.value[0].name;
+        }
+        await loadDraftOriginalPdf(res.data.draft_id, selectedPdfSourceId.value);
       }
     } catch (e) {
       ElMessage.error("读取解析草稿失败");
@@ -954,11 +976,23 @@ async function loadOriginalPdf(contractId: number, sourceId?: number) {
   }
 }
 
+async function loadDraftOriginalPdf(currentDraftId: number, sourceId?: number) {
+  try {
+    const response = await fetch(parseApi.getDraftOriginalPdfUrl(currentDraftId, sourceId), {
+      headers: { Authorization: `Bearer ${localStorage.getItem("contract_token") || ""}` },
+    });
+    if (!response.ok) return;
+    originalPdfUrl.value = URL.createObjectURL(await response.blob());
+  } catch {
+    // 草稿包没有 PDF 时继续展示合并后的 Markdown。
+  }
+}
+
 async function switchPdfSource(sourceId: number) {
-  if (!targetId.value) return;
   const source = pdfSources.value.find((item) => item.id === sourceId);
   if (source) currentTab.value.fileName = source.name;
-  await loadOriginalPdf(targetId.value, sourceId);
+  if (draftId.value) await loadDraftOriginalPdf(draftId.value, sourceId);
+  else if (targetId.value) await loadOriginalPdf(targetId.value, sourceId);
 }
 
 const currentTab = computed(

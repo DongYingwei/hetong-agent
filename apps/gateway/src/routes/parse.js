@@ -106,6 +106,22 @@ router.get('/draft/:id', async (ctx) => {
   }
 });
 
+router.get('/draft/:id/source-files', async (ctx) => {
+  const resp = await fetch(`${config.parse.url}/draft/${ctx.params.id}/source-files`);
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) return ctx.fail(data.detail || '读取草稿附件失败', 502);
+  ctx.success(data);
+});
+
+router.get('/draft/:id/original-pdf', async (ctx) => {
+  const sourceId = ctx.query.sourceId ? `?source_id=${encodeURIComponent(ctx.query.sourceId)}` : '';
+  const resp = await fetch(`${config.parse.url}/draft/${ctx.params.id}/original-pdf${sourceId}`);
+  if (!resp.ok || !resp.body) return ctx.fail('未找到草稿原始 PDF', resp.status === 404 ? 404 : 502);
+  ctx.status = 200;
+  ctx.set('Content-Type', resp.headers.get('content-type') || 'application/pdf');
+  ctx.body = Readable.fromWeb(resp.body);
+});
+
 // ③ 人工核对入库 + 建向量
 router.post('/confirm/:id', async (ctx) => {
   const body = ctx.request.body || {};

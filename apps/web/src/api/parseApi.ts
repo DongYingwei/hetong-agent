@@ -50,6 +50,12 @@ export interface ConfirmResult {
   vectorized: boolean;
 }
 
+export interface SourceFile {
+  id: number;
+  name: string;
+  role: string;
+}
+
 /**
  * 解析侧代理 API —— 上传 PDF → 解析入草稿 → 人工核对 → 入库+建向量。
  * 全经网关 /api/parse/* 转发到解析 FastAPI（解析同步等待，超时给足）。
@@ -73,6 +79,16 @@ export const parseApi = {
   /** 读草稿全字段供核对页展示。 */
   getDraft(draftId: number): Promise<ApiResponse<DraftData>> {
     return request.get(`/parse/draft/${draftId}`);
+  },
+
+  getDraftSourceFiles(draftId: number): Promise<ApiResponse<{ list: SourceFile[] }>> {
+    return request.get(`/parse/draft/${draftId}/source-files`);
+  },
+
+  getDraftOriginalPdfUrl(draftId: number, sourceId?: number): string {
+    const port = import.meta.env.VITE_API_PORT || '3002';
+    const suffix = sourceId ? `?sourceId=${encodeURIComponent(sourceId)}` : '';
+    return `http://${window.location.hostname}:${port}/api/parse/draft/${draftId}/original-pdf${suffix}`;
   },
 
   /** 人工核对入库 + 建向量。overrides = 人工修正的字段。 */

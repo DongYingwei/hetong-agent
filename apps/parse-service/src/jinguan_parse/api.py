@@ -180,6 +180,46 @@ def create_app(conn_factory, deps: IngestDeps,
             raise HTTPException(status_code=404, detail=f"草稿 id={draft_id} 不存在")
         return draft
 
+    @app.get("/draft/{draft_id}/source-files")
+    def get_draft_source_files(draft_id: int):
+        """草稿核对阶段列出合同包内全部 PDF，供人工逐份查看。"""
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT cs.id, cs.source_relative_path, cs.role
+                                 FROM contract_packages cp
+                                 JOIN contract_sources cs ON cs.package_id=cp.id
+                                WHERE cp.draft_id=%s AND cs.source_type='pdf'
+                                ORDER BY CASE WHEN cs.role='primary' THEN 0 ELSE 1 END, cs.id""", (draft_id,))
+                rows = cur.fetchall()
+        finally:
+            conn.close()
+        return {"list": [{"id": row[0], "name": Path(row[1]).name, "role": row[2]} for row in rows]}
+
+    @app.get("/draft/{draft_id}/original-pdf")
+    def get_draft_original_pdf(draft_id: int, source_id: int | None = None):
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                if source_id is None:
+                    cur.execute("""SELECT cs.source_relative_path FROM contract_packages cp
+                                     JOIN contract_sources cs ON cs.package_id=cp.id
+                                    WHERE cp.draft_id=%s AND cs.source_type='pdf'
+                                    ORDER BY CASE WHEN cs.role='primary' THEN 0 ELSE 1 END, cs.id LIMIT 1""", (draft_id,))
+                else:
+                    cur.execute("""SELECT cs.source_relative_path FROM contract_packages cp
+                                     JOIN contract_sources cs ON cs.package_id=cp.id
+                                    WHERE cp.draft_id=%s AND cs.source_type='pdf' AND cs.id=%s LIMIT 1""", (draft_id, source_id))
+                row = cur.fetchone()
+        finally:
+            conn.close()
+        if not row or not row[0]:
+            raise HTTPException(status_code=404, detail="该草稿未关联原始 PDF")
+        pdf = (source_root / row[0]).resolve()
+        if source_root not in pdf.parents or not pdf.is_file():
+            raise HTTPException(status_code=404, detail="已关联的原始 PDF 文件不存在")
+        return FileResponse(pdf, media_type="application/pdf", filename=pdf.name, content_disposition_type="inline")
+
     @app.get("/contract/{contract_id}/source-files")
     def get_source_files(contract_id: int):
         """列出合同包中可预览的 PDF；详情页可切换附件但不会暴露磁盘路径。"""
