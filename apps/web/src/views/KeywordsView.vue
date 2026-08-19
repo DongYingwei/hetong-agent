@@ -110,29 +110,6 @@
           </template>
         </el-table-column>
 
-        <!-- 包含子词 (主表行直接明现蓝色 Tag 标签) -->
-        <el-table-column label="包含子词" min-width="260">
-          <template #default="{ row }">
-            <div v-if="row.sub_words && row.sub_words.length > 0" class="flex flex-wrap gap-1.5 py-1">
-              <span
-                v-for="(sub, sIdx) in row.sub_words"
-                :key="sIdx"
-                class="tag tag-blue inline-flex items-center gap-1 py-0.5 px-2.5"
-                style="font-size: 12px;"
-              >
-                {{ sub }}
-                <el-icon
-                  class="cursor-pointer text-blue-400 hover:text-red-500 text-[10px] transition-colors"
-                  @click.stop="handleRemoveSub(row, sub)"
-                >
-                  <Close />
-                </el-icon>
-              </span>
-            </div>
-            <span v-else class="text-xs text-gray-400">暂无子词</span>
-          </template>
-        </el-table-column>
-
         <el-table-column label="子词数量" width="100" align="center">
           <template #default="{ row }">
             <span class="font-semibold text-[#303133]">{{ row.sub_words?.length ?? row.sub_count ?? 0 }}</span> 个

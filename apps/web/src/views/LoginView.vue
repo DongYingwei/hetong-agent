@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-gray-100 px-4" style="background: linear-gradient(135deg, #E6F8F0 0%, #F5F5F5 50%, #E8F5E9 100%);">
+  <div class="min-h-screen flex items-center justify-center bg-gray-100 px-4">
     <div class="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
       <!-- Header / Logo -->
       <div class="flex flex-col items-center mb-8">
