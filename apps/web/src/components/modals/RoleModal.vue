@@ -135,7 +135,7 @@ async function handleSubmit() {
         visible.value = false;
         emit('success');
       } else {
-        ElMessage.error(res.message || '编辑失败');
+        ElMessage.error(res.msg || '编辑失败');
       }
     } else {
       const res = await roleApi.create(payload);
@@ -144,7 +144,7 @@ async function handleSubmit() {
         visible.value = false;
         emit('success');
       } else {
-        ElMessage.error(res.message || '新增失败');
+        ElMessage.error(res.msg || '新增失败');
       }
     }
   } catch (e: any) {

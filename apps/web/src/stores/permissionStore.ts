@@ -103,7 +103,7 @@ export const usePermissionStore = defineStore('permission', () => {
       }
     }
 
-    const allowedMenuIds = rolePermissions.value[targetRole] || rolePermissions.value['admin'] || defaultRolePerms.admin;
+    const allowedMenuIds = rolePermissions.value[targetRole] || rolePermissions.value['admin'] || defaultRolePerms.admin || [];
     return allowedMenuIds.includes(menuId);
   }
 

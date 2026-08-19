@@ -896,19 +896,21 @@ onMounted(async () => {
       const res = await contractApi.getDetail(targetId.value);
       if (res.code === 200 && res.data.contract) {
         const item = res.data.contract;
-        fileTabs.value[0].id = item.id;
-        fileTabs.value[0].fileName = item.contract_name + ".pdf";
-        fileTabs.value[0].form.contractNo = item.contract_no;
-        fileTabs.value[0].form.customerName = item.customer_name;
-        fileTabs.value[0].form.contractName = item.contract_name;
-        fileTabs.value[0].form.contractType = item.contract_type;
-        fileTabs.value[0].form.signDate = item.sign_date
+        const tab = fileTabs.value[0];
+        if (!tab) return;
+        tab.id = item.id;
+        tab.fileName = item.contract_name + ".pdf";
+        tab.form.contractNo = item.contract_no;
+        tab.form.customerName = item.customer_name;
+        tab.form.contractName = item.contract_name;
+        tab.form.contractType = item.contract_type;
+        tab.form.signDate = item.sign_date
           ? item.sign_date.substring(0, 10)
           : "2026-07-15";
-        fileTabs.value[0].form.amount = String(item.amount);
-        fileTabs.value[0].form.assessmentLine = item.assessment_line || "通用";
-        fileTabs.value[0].form.contractStatus = item.contract_status;
-        fileTabs.value[0].verified = item.verify_status === 1;
+        tab.form.amount = String(item.amount);
+        tab.form.assessmentLine = item.assessment_line || "通用";
+        tab.form.contractStatus = item.contract_status;
+        tab.verified = item.verify_status === 1;
         const [hitRes, keywordRes] = await Promise.all([
           contractApi.getKeywordHits(item.id),
           keywordApi.getList({ page: 1, pageSize: 100 }),
@@ -922,7 +924,7 @@ onMounted(async () => {
             staff: "人员需求",
             project: "项目名称",
           };
-          const grouped: Record<string, string[]> = {
+          const grouped: { 服务内容: string[]; 技术要求: string[]; 项目名称: string[]; 人员需求: string[] } = {
             服务内容: [],
             技术要求: [],
             项目名称: [],
@@ -937,7 +939,7 @@ onMounted(async () => {
             )
               grouped[section].push(hit.keyword_name);
           }
-          fileTabs.value[0].form.keywords = grouped;
+          tab.form.keywords = grouped;
         }
         if (keywordRes.code === 200) {
           keywordIdByName.value = Object.fromEntries(
@@ -951,7 +953,7 @@ onMounted(async () => {
         if (sourceRes.code === 200) {
           pdfSources.value = sourceRes.data.list || [];
           selectedPdfSourceId.value = pdfSources.value[0]?.id;
-          if (pdfSources.value[0]) fileTabs.value[0].fileName = pdfSources.value[0].name;
+          if (pdfSources.value[0]) tab.fileName = pdfSources.value[0].name;
         }
         await loadOriginalPdf(item.id, selectedPdfSourceId.value);
       }
@@ -995,9 +997,7 @@ async function switchPdfSource(sourceId: number) {
   else if (targetId.value) await loadOriginalPdf(targetId.value, sourceId);
 }
 
-const currentTab = computed(
-  () => fileTabs.value[activeTabIndex.value] || fileTabs.value[0],
-);
+const currentTab = computed(() => fileTabs.value[activeTabIndex.value] ?? fileTabs.value[0]!);
 const currentForm = computed(() => currentTab.value.form);
 
 function keywordCount(
@@ -1022,10 +1022,12 @@ async function removeKeyword(sectionKey: string, index: number) {
     项目名称: "role",
     人员需求: "staff",
   };
+  if (!keyword) return;
   const keywordId = keywordIdByName.value[keyword];
-  if (targetId.value && keywordId && moduleMap[sectionKey]) {
+  const moduleKey = moduleMap[sectionKey];
+  if (targetId.value && keywordId && moduleKey) {
     await contractApi.saveKeywordOverride(targetId.value, {
-      module_key: moduleMap[sectionKey],
+      module_key: moduleKey,
       keyword_id: keywordId,
       action: "exclude",
     });
@@ -1055,7 +1057,8 @@ function addKeywordPrompt(sectionKey: string) {
         人员需求: "staff",
       };
       const keywordId = keywordIdByName.value[keyword];
-      if (targetId.value && (!keywordId || !moduleMap[sectionKey])) {
+      const moduleKey = moduleMap[sectionKey];
+      if (targetId.value && (!keywordId || !moduleKey)) {
         ElMessage.error("只能添加关键词管理中已启用的父关键词");
         return;
       }
@@ -1063,7 +1066,7 @@ function addKeywordPrompt(sectionKey: string) {
         if (targetId.value && keywordId) {
           contractApi
             .saveKeywordOverride(targetId.value, {
-              module_key: moduleMap[sectionKey],
+              module_key: moduleKey,
               keyword_id: keywordId,
               action: "include",
             })

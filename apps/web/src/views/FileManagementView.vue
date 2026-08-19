@@ -216,7 +216,7 @@ async function handleUpload(options: any) {
   try {
     const res = await fileApi.upload(formData);
     if (res.code === 200) {
-      ElMessage.success('文件上传成功，可访问路径: ' + res.data.fileUrl);
+      ElMessage.success('文件上传成功，可访问路径: ' + res.data.file_url);
       loadData();
     }
   } finally {

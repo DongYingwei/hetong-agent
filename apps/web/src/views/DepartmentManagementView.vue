@@ -595,7 +595,7 @@ function buildDeptTree(list: any[]): DeptNode[] {
 
 async function loadUsers() {
   try {
-    const res = await userApi.getList();
+    const res = await userApi.getList({});
     if (res.code === 200 && res.data) {
       if (Array.isArray(res.data)) {
         allUserList.value = res.data;

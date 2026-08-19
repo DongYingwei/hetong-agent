@@ -229,10 +229,12 @@ async function loadPdf() {
   if (response.ok) pdfUrl.value = URL.createObjectURL(await response.blob());
 }
 onMounted(async () => {
+  const contractId = Number(route.params.id);
+  if (!Number.isFinite(contractId)) return;
   loading.value = true;
   try {
     const [d, m] = await Promise.all([
-      contractApi.getDetail(+route.params.id),
+      contractApi.getDetail(contractId),
       contractApi.getModules(),
     ]);
     if (d.code === 200) {

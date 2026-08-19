@@ -74,7 +74,7 @@ export interface ExportContractRow {
   contract_name?: string;
   name?: string;
   assessment_line?: string;
-  bid_no?: string;
+  bid_no?: string | null;
   main_contract_no?: string;
   framework_short_name?: string;
   customer_contract_no?: string;

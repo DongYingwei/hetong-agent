@@ -81,7 +81,7 @@
                     <table class="w-full text-xs whitespace-nowrap"><thead class="sticky top-0 z-10 bg-gray-100"><tr>
                       <th v-for="col in ledgerColumns(msg)" :key="col.key" class="px-3 py-2 text-left font-medium">{{ col.label }}</th>
                     </tr></thead><tbody><tr v-for="(row,index) in (msg.isExpanded ? ledgerRows(msg) : ledgerRows(msg).slice(0,5))" :key="row.id || index" :class="index%2?'bg-gray-50':'bg-white'">
-                      <td v-for="col in ledgerColumns(msg)" :key="col.key" class="px-3 py-2">{{ ledgerCell(row,col.key) }}</td>
+                      <td v-for="col in ledgerColumns(msg)" :key="col.key" class="px-3 py-2">{{ ledgerCell(row, col.key || '') }}</td>
                     </tr></tbody></table>
                   </div>
                   <div v-if="(msg.resultTotal || ledgerRows(msg).length) > 5" class="px-3 py-1.5 bg-gray-50 text-[11px] text-gray-500 border-t flex items-center justify-between">
