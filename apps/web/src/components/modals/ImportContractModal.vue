@@ -18,6 +18,7 @@
         <input
           ref="fileInputRef"
           type="file"
+          multiple
           accept=".pdf,.doc,.docx"
           class="hidden"
           @change="handleFileSelect"
@@ -25,8 +26,8 @@
         <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
-        <p class="text-sm font-medium text-gray-700">选择一个合同文件，或拖拽文件到此处</p>
-        <p class="text-xs text-gray-400 mt-1.5">每次仅上传一个 PDF/Word 文件；单文件不超过 300MB</p>
+        <p class="text-sm font-medium text-gray-700">选择同一合同的文件，或拖拽文件到此处</p>
+        <p class="text-xs text-gray-400 mt-1.5">支持多个 PDF/Word 附件，整组文件只生成一份合同草稿；单文件不超过 300MB</p>
       </div>
 
       <!-- 已选择待解析的文件列表 -->
@@ -191,7 +192,7 @@ function triggerFileSelect() {
 function handleFileSelect(e: Event) {
   const target = e.target as HTMLInputElement;
   if (target.files) {
-    selectSingleFile(Array.from(target.files));
+    selectContractFiles(Array.from(target.files));
     // 清空后可重复选择同一个文件。
     target.value = '';
   }
@@ -199,23 +200,20 @@ function handleFileSelect(e: Event) {
 
 function handleFileDrop(e: DragEvent) {
   if (e.dataTransfer?.files) {
-    selectSingleFile(Array.from(e.dataTransfer.files));
+    selectContractFiles(Array.from(e.dataTransfer.files));
   }
 }
 
-function selectSingleFile(files: File[]) {
-  const file = files[0];
-  if (!file) return;
-  if (files.length > 1) ElMessage.info('一次仅支持上传一个合同文件，已选择第一份');
-  if (file.size > 300 * 1024 * 1024) {
+function selectContractFiles(files: File[]) {
+  if (files.some((file) => file.size > 300 * 1024 * 1024)) {
     ElMessage.error('单个合同文件不能超过 300MB');
     return;
   }
-  if (!/\.(pdf|doc|docx)$/i.test(file.name)) {
+  if (files.some((file) => !/\.(pdf|doc|docx)$/i.test(file.name))) {
     ElMessage.error('仅支持 PDF、DOC、DOCX 格式的合同文件');
     return;
   }
-  selectedFiles.value = [file];
+  selectedFiles.value = files;
 }
 
 function removeFile(index: number) {
@@ -257,38 +255,22 @@ async function startParsing() {
   progressPercent.value = 5;
   currentParsingHint.value = '正在上传文件...';
 
-  const drafts: ParsedDraft[] = [];
   try {
-    for (let i = 0; i < selectedFiles.value.length; i++) {
-      const file = selectedFiles.value[i];
-      if (!file) continue;
-      const formData = new FormData();
-      formData.append('file', file);
-      currentParsingHint.value = `正在解析《${file.name}》（MinerU + LLM，大文件可能数分钟）...`;
-
-      const res = await parseApi.upload(formData);
-      if (res.code === 200 && res.data?.draft_id) {
-        const f = (res.data.draft?.form ?? {}) as DraftForm;
-        drafts.push({
-          draft_id: res.data.draft_id,
-          contract_name: f.contract_name || file.name.replace(/\.[^/.]+$/, ''),
-          contract_no: f.contract_no || '待填写',
-          customer_name: f.customer_name || '',
-        });
-      } else if (res.code === 200 && res.data?.status === 'skipped_duplicate') {
-        ElMessage.warning(`《${file.name}》内容指纹与已解析合同相同，已跳过（未重复解析）`);
-      } else {
-        ElMessage.warning(`《${file.name}》解析未产生草稿：${res.msg || '未知原因'}`);
-      }
-
-      progressPercent.value = Math.min(90, Math.round(((i + 1) / selectedFiles.value.length) * 90));
-    }
-
-    parsedResults.value = drafts;
+    const formData = new FormData();
+    selectedFiles.value.forEach((file) => formData.append('files', file));
+    currentParsingHint.value = `正在解析 ${selectedFiles.value.length} 个合同附件（MinerU + LLM，大文件可能数分钟）...`;
+    const res = await parseApi.uploadPackage(formData);
+    if (res.code !== 200 || !res.data?.draft_id) throw new Error(res.msg || '合同包解析未产生草稿');
+    const f = (res.data.draft?.form ?? {}) as DraftForm;
+    parsedResults.value = [{
+      draft_id: res.data.draft_id,
+      contract_name: f.contract_name || selectedFiles.value[0]?.name.replace(/\.[^/.]+$/, '') || '待填写',
+      contract_no: f.contract_no || '待填写',
+      customer_name: f.customer_name || '',
+    }];
     progressPercent.value = 100;
     phase.value = 'done';
-    if (drafts.length > 0) ElMessage.success(`解析完成，${drafts.length} 份已入草稿待人工核对`);
-    else ElMessage.warning('未产生待核对草稿（可能均重复或解析失败）');
+    ElMessage.success('合同包解析完成，已生成一份草稿待人工核对');
   } catch (err: any) {
     ElMessage.error(`解析失败：${err?.response?.data?.msg || err?.message || '未知错误'}`);
     phase.value = 'upload';

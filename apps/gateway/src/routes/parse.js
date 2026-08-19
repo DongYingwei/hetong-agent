@@ -56,6 +56,41 @@ router.post('/upload', async (ctx) => {
   }
 });
 
+// 多文件合同包：所有文件属于同一份合同，解析侧合并 PDF 正文后只创建一个草稿。
+router.post('/upload-package', async (ctx) => {
+  const raw = ctx.request.files?.files || ctx.request.files?.file || ctx.request.files?.upload;
+  const files = (Array.isArray(raw) ? raw : raw ? [raw] : []);
+  if (!files.length) return ctx.fail('未接收到合同文件', 400);
+  const form = new FormData();
+  try {
+    for (const file of files) {
+      const originalName = file.originalFilename || file.newFilename || 'contract.pdf';
+      const ext = originalName.split('.').pop()?.toLowerCase();
+      if (!['pdf', 'doc', 'docx'].includes(ext)) return ctx.fail(`不支持的附件格式：${originalName}`, 400);
+      const buf = fs.readFileSync(file.filepath);
+      const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+      form.append('files', new Blob([buf], { type: contentType }), originalName);
+    }
+    const force = ctx.query.force === 'true' || ctx.query.force === '1';
+    const { signal, clear } = withTimeout(config.parse.timeoutMs);
+    try {
+      const resp = await fetch(`${config.parse.url}/parse-package?force=${force}`, { method: 'POST', body: form, signal });
+      clear();
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) return ctx.fail(data.detail?.error || `合同包解析失败(${resp.status})`, 502);
+      ctx.success(data, '合同包解析完成，已入草稿待核对');
+    } catch (e) {
+      clear();
+      const aborted = e.name === 'AbortError';
+      return ctx.fail(aborted ? '合同包解析超时' : `解析服务调用失败: ${e.message}`, aborted ? 504 : 502);
+    }
+  } finally {
+    for (const file of files) {
+      try { fs.unlinkSync(file.filepath); } catch { /* noop */ }
+    }
+  }
+});
+
 // ② 读草稿全字段（核对页展示）
 router.get('/draft/:id', async (ctx) => {
   const { signal, clear } = withTimeout(30000);

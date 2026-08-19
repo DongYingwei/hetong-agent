@@ -23,7 +23,7 @@ from .vector import EmbeddingClient, VectorStore, vectorize_confirmed_contract
 from .confirm import confirm_draft, DraftNotFound
 from .keyword_scan import ScanKeyword, ScanModule, scan_markdown, scan_fulltext_markdown, split_module_paragraphs
 from .pdf_markdown_cache import convert_pdf
-from .upload_storage import persist_pdf_upload
+from .upload_storage import persist_pdf_upload, persist_upload
 
 # 核对页要展示/编辑的草稿字段（17 标量 AI 主列 + 手工列 + tag_ai）。
 _DRAFT_FORM_COLS = [
@@ -106,6 +106,60 @@ def create_app(conn_factory, deps: IngestDeps,
         if result.status == "failed":
             raise HTTPException(status_code=500, detail=payload)
         # B2：解析成功即回带草稿字段，前端拿到 draft_id 后可直接跳核对页（也可再调 /draft）。
+        if result.draft_id is not None:
+            conn = conn_factory()
+            try:
+                payload["draft"] = _read_draft(conn, result.draft_id)
+            finally:
+                conn.close()
+        return payload
+
+    @app.post("/parse-package")
+    async def parse_package(files: list[UploadFile] = File(...), force: bool = False):
+        """一个合同包可包含多个原件：合并 PDF 正文只生成一个草稿，Word 仅作为附件留存。"""
+        if not files:
+            raise HTTPException(status_code=400, detail="未接收到合同文件")
+        package_key = f"upload-package:{uuid.uuid4().hex}"
+        sources: list[dict] = []
+        pdfs: list[tuple[Path, str, str]] = []
+        try:
+            for upload in files:
+                name = upload.filename or "contract.pdf"
+                suffix = Path(name).suffix.lower()
+                if suffix not in {".pdf", ".doc", ".docx"}:
+                    raise HTTPException(status_code=400, detail=f"不支持的附件格式：{name}")
+                path, relative_path, sha = persist_upload(await upload.read(), name, source_root)
+                source = {"path": path, "relative_path": relative_path, "sha": sha,
+                          "source_type": suffix[1:], "markdown_path": None, "markdown": None}
+                if suffix == ".pdf":
+                    _, markdown_path = convert_pdf(path, md_root, deps.mineru, source_root=source_root,
+                                                    markdown_relative_path=relative_path, force=force)
+                    markdown = markdown_path.read_text(encoding="utf-8")
+                    source["markdown_path"] = markdown_path.relative_to(md_root).as_posix()
+                    source["markdown"] = markdown
+                    pdfs.append((path, relative_path, sha))
+                sources.append(source)
+            if not pdfs:
+                raise HTTPException(status_code=400, detail="合同包至少需要一份 PDF 用于解析")
+            merged_markdown = "\n\n".join(
+                f"# 附件：{Path(source['relative_path']).name}\n\n{source['markdown']}"
+                for source in sources if source["markdown"]
+            )
+            conn = conn_factory()
+            try:
+                result = ingest_one(conn, str(pdfs[0][0]), deps, force=force, markdown=merged_markdown)
+                if result.status == "ingested" and result.draft_id is not None:
+                    _register_uploaded_package(conn, result.draft_id, package_key, sources)
+            finally:
+                conn.close()
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail={"error": f"合同包上传或解析失败: {type(exc).__name__}: {exc}"}) from exc
+        payload = {"path": ", ".join(Path(source["relative_path"]).name for source in sources),
+                   "status": result.status, "draft_id": result.draft_id, "error": result.error}
+        if result.status == "failed":
+            raise HTTPException(status_code=500, detail=payload)
         if result.draft_id is not None:
             conn = conn_factory()
             try:
@@ -500,6 +554,28 @@ def _register_uploaded_source(conn, draft_id: int, sha: str, source_relative_pat
                          SET source_sha256=EXCLUDED.source_sha256, markdown_path=EXCLUDED.markdown_path,
                              markdown_sha256=EXCLUDED.markdown_sha256, role='primary'""",
                     (package_id, sha, source_relative_path, markdown_path, markdown_sha256))
+    conn.commit()
+
+
+def _register_uploaded_package(conn, draft_id: int, package_key: str, sources: list[dict]) -> None:
+    """将同一次多文件上传登记为同一合同包；首个 PDF 为主原件，其余均为附件。"""
+    import hashlib
+
+    primary = next(source for source in sources if source["source_type"] == "pdf")
+    with conn.cursor() as cur:
+        cur.execute("""INSERT INTO contract_packages(package_key, primary_source_path, draft_id, status)
+                       VALUES (%s,%s,%s,'draft') RETURNING id""",
+                    (package_key, primary["relative_path"], draft_id))
+        package_id = cur.fetchone()[0]
+        for source in sources:
+            markdown = source["markdown"]
+            markdown_sha = hashlib.sha256(markdown.encode("utf-8")).hexdigest() if markdown else None
+            role = "primary" if source is primary else "attachment"
+            cur.execute("""INSERT INTO contract_sources
+                             (package_id,source_sha256,source_relative_path,source_type,markdown_path,markdown_sha256,role)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s)""",
+                        (package_id, source["sha"], source["relative_path"], source["source_type"],
+                         source["markdown_path"], markdown_sha, role))
     conn.commit()
 
 

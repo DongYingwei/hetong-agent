@@ -10,18 +10,21 @@ from datetime import datetime
 from pathlib import Path
 
 
-def persist_pdf_upload(content: bytes, original_name: str, pdf_root: str | Path,
-                       now: datetime | None = None) -> tuple[Path, str, str]:
+def persist_upload(content: bytes, original_name: str, source_root: str | Path,
+                   now: datetime | None = None) -> tuple[Path, str, str]:
     """保存上传文件，返回 ``(绝对路径, 相对路径, sha256)``。
 
     存储路径和批量导入保持同一规则：以 ``pdf_root`` 为源根目录，按上传年月分层，
     文件名带内容指纹。因此同内容重复上传不会产生第二份原件。
     """
-    root = Path(pdf_root).resolve()
+    root = Path(source_root).resolve()
     instant = now or datetime.now()
     sha = hashlib.sha256(content).hexdigest()
     safe_stem = _safe_stem(original_name)
-    relative = Path("uploads") / f"{instant:%Y}" / f"{instant:%m}" / f"{safe_stem}--{sha[:12]}.pdf"
+    suffix = Path(original_name).suffix.lower()
+    if suffix not in {".pdf", ".doc", ".docx"}:
+        raise ValueError("仅支持 PDF、DOC、DOCX 格式")
+    relative = Path("uploads") / f"{instant:%Y}" / f"{instant:%m}" / f"{safe_stem}--{sha[:12]}{suffix}"
     target = root / relative
     target.parent.mkdir(parents=True, exist_ok=True)
 
@@ -42,6 +45,14 @@ def persist_pdf_upload(content: bytes, original_name: str, pdf_root: str | Path,
             temporary.unlink(missing_ok=True)
             raise
     return target, relative.as_posix(), sha
+
+
+def persist_pdf_upload(content: bytes, original_name: str, pdf_root: str | Path,
+                       now: datetime | None = None) -> tuple[Path, str, str]:
+    """兼容原单 PDF 上传调用。"""
+    if Path(original_name).suffix.lower() != ".pdf":
+        raise ValueError("仅接受 PDF 文件")
+    return persist_upload(content, original_name, pdf_root, now)
 
 
 def _safe_stem(original_name: str) -> str:

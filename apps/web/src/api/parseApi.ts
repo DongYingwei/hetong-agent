@@ -63,6 +63,13 @@ export const parseApi = {
     });
   },
 
+  uploadPackage(formData: FormData, force = false): Promise<ApiResponse<ParseUploadResult>> {
+    return request.post(`/parse/upload-package${force ? '?force=true' : ''}`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 600000,
+    });
+  },
+
   /** 读草稿全字段供核对页展示。 */
   getDraft(draftId: number): Promise<ApiResponse<DraftData>> {
     return request.get(`/parse/draft/${draftId}`);
