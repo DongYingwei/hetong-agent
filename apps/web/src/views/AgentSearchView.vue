@@ -341,7 +341,7 @@ function renderContent(md: string): string {
 const WELCOME = `您好，我是**综合检索智能体**。您可以问我关于合同和订单的任何问题，例如：
 
 - "服务内容包含AI的合同有多少，提供编号和总金额"
-- "2026年签订的运维合同有哪些"
+- "2026年签订的合同有哪些"
 - "含AI关键词的合同总金额是多少"`;
 
 const historyList = ref<any[]>([]);
