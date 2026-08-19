@@ -283,9 +283,11 @@
                   class="w-full"
                   :disabled="isReadOnly"
                 >
-                  <el-option label="单项合同" :value="2" />
-                  <el-option label="框架协议" :value="1" />
-                  <el-option label="补充协议" :value="3" />
+                  <el-option label="单项合同" value="单项合同" />
+                  <el-option label="框架协议" value="框架协议" />
+                  <el-option label="补充协议" value="补充协议" />
+                  <el-option label="解除协议" value="解除协议" />
+                  <el-option label="变更协议" value="变更协议" />
                 </el-select>
               </div>
               <div class="flex items-center gap-2">
@@ -429,7 +431,37 @@
             </div>
           </div>
 
-          <!-- 4. 风控管理 -->
+          <!-- 4. 合同-商务条款 -->
+          <div>
+            <div class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+              <h3 class="text-sm font-bold text-[#1A1A1A]">合同-商务条款</h3>
+              <span class="text-xs text-gray-400 font-medium">AI 识别 5 项</span>
+            </div>
+            <div class="grid grid-cols-2 gap-x-4 gap-y-3 text-xs">
+              <div class="flex items-center gap-2">
+                <label class="text-gray-500 w-24 shrink-0 flex items-center gap-1">是否涉及后评估 <span class="tag tag-green" style="font-size: 10px; padding: 0 4px">AI</span></label>
+                <el-input v-model="currentForm.postEval" size="small" :disabled="isReadOnly" />
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-gray-500 w-24 shrink-0 flex items-center gap-1">履约保证金金额 <span class="tag tag-green" style="font-size: 10px; padding: 0 4px">AI</span></label>
+                <el-input v-model="currentForm.depositAmount" size="small" :disabled="isReadOnly" />
+              </div>
+              <div class="col-span-2 flex items-center gap-2">
+                <label class="text-gray-500 w-24 shrink-0 flex items-center gap-1">履约保证金退还条件 <span class="tag tag-green" style="font-size: 10px; padding: 0 4px">AI</span></label>
+                <el-input v-model="currentForm.depositRefund" size="small" :disabled="isReadOnly" />
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-gray-500 w-24 shrink-0 flex items-center gap-1">仲裁方式 <span class="tag tag-green" style="font-size: 10px; padding: 0 4px">AI</span></label>
+                <el-input v-model="currentForm.arbitration" size="small" :disabled="isReadOnly" />
+              </div>
+              <div class="flex items-center gap-2">
+                <label class="text-gray-500 w-24 shrink-0 flex items-center gap-1">授权人 <span class="tag tag-green" style="font-size: 10px; padding: 0 4px">AI</span></label>
+                <el-input v-model="currentForm.authorizer" size="small" :disabled="isReadOnly" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 5. 风控管理 -->
           <div>
             <div
               class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2"
@@ -447,16 +479,16 @@
                   class="w-full"
                   :disabled="isReadOnly"
                 >
-                  <el-option label="流水中" :value="1" />
-                  <el-option label="已签约" :value="2" />
-                  <el-option label="已闭环" :value="3" />
-                  <el-option label="已作废" :value="4" />
+                  <el-option label="流水中" value="流水中" />
+                  <el-option label="已签约" value="已签约" />
+                  <el-option label="已闭环" value="已闭环" />
+                  <el-option label="已作废" value="已作废" />
                 </el-select>
               </div>
             </div>
           </div>
 
-          <!-- 5. 关键词解析结果 -->
+          <!-- 6. 关键词解析结果 -->
           <div>
             <div
               class="flex items-center justify-between mb-3 border-b border-gray-100 pb-2"
@@ -720,7 +752,7 @@ const keywordHits = ref<ContractKeywordHit[]>([]);
 const keywordIdByName = ref<Record<string, number>>({});
 
 // 多合同核对 Tab 视图数据
-const fileTabs = ref([
+const fileTabs = ref<Array<{ id: number; fileName: string; verified: boolean; form: Record<string, any> }>>([
   {
     id: 1,
     fileName: "兴晟泽合同.pdf",
@@ -743,6 +775,11 @@ const fileTabs = ref([
       amount: "860000",
       taxRate: "6%",
       settlementTerms: "签约后10个工作日内付30%预付款，运维满6个月支付50%...",
+      postEval: "",
+      depositAmount: "",
+      depositRefund: "",
+      arbitration: "",
+      authorizer: "",
       contractStatus: 2,
       keywords: {
         服务内容: ["智能运维", "AIOps", "智能算法"],
@@ -773,6 +810,11 @@ const fileTabs = ref([
       amount: "1200000",
       taxRate: "6%",
       settlementTerms: "项目上线验收合格后30日内全额结清...",
+      postEval: "",
+      depositAmount: "",
+      depositRefund: "",
+      arbitration: "",
+      authorizer: "",
       contractStatus: 2,
       keywords: {
         服务内容: ["数据标注", "模型训练"],
@@ -803,6 +845,11 @@ const fileTabs = ref([
       amount: "4600000",
       taxRate: "6%",
       settlementTerms: "按季度根据实际巡检识别工单结算...",
+      postEval: "",
+      depositAmount: "",
+      depositRefund: "",
+      arbitration: "",
+      authorizer: "",
       contractStatus: 2,
       keywords: {
         服务内容: ["无人机巡检", "图像识别"],
@@ -813,6 +860,40 @@ const fileTabs = ref([
     },
   },
 ]);
+
+/**
+ * 草稿与已入库合同的字段名不同于核对页表单字段名；只在这里做一次完整映射。
+ * 空值保持为空，不用示例值或默认日期覆盖审核版台账的事实数据。
+ */
+function applyLedgerValues(form: Record<string, any>, source: Record<string, any>) {
+  const text = (value: unknown) => value == null ? "" : String(value);
+  const dateText = (value: unknown) => text(value).slice(0, 10);
+  Object.assign(form, {
+    contractNo: text(source.contract_no),
+    customerName: text(source.customer_name),
+    contractName: text(source.contract_name),
+    assessmentLine: text(source.assessment_line),
+    bidNo: text(source.bid_no),
+    mainContractNo: text(source.related_main_no),
+    frameworkShortName: text(source.framework_alias),
+    customerContractNo: text(source.customer_contract_no),
+    signingEntity: text(source.signing_entity),
+    contractType: text(source.contract_type),
+    signDate: dateText(source.sign_date),
+    startDate: dateText(source.start_date),
+    endDate: dateText(source.end_date),
+    amountAttr: text(source.amount_type),
+    amount: text(source.amount),
+    taxRate: text(source.tax_rate),
+    settlementTerms: text(source.settlement_terms),
+    postEval: text(source.post_eval),
+    depositAmount: text(source.deposit_amount),
+    depositRefund: text(source.deposit_refund),
+    arbitration: text(source.arbitration),
+    authorizer: text(source.authorizer),
+    contractStatus: text(source.status ?? source.contract_status),
+  });
+}
 
 onMounted(async () => {
   // 不允许接口失败时回退展示原型合同；核对页始终从空表单开始。
@@ -826,7 +907,8 @@ onMounted(async () => {
       contractNo: '', customerName: '', contractName: '', assessmentLine: '', bidNo: '',
       mainContractNo: '', frameworkShortName: '', customerContractNo: '', signingEntity: '',
       contractType: '', signDate: '', startDate: '', endDate: '', amountAttr: '', amount: '',
-      taxRate: '', settlementTerms: '', contractStatus: '',
+      taxRate: '', settlementTerms: '', postEval: '', depositAmount: '', depositRefund: '',
+      arbitration: '', authorizer: '', contractStatus: '',
       keywords: { 服务内容: [], 技术要求: [], 项目名称: [], 人员需求: [] },
     });
   }
@@ -845,19 +927,7 @@ onMounted(async () => {
           (f.contract_name || f.contract_no || "待核对合同") + ".pdf";
         // 合同原文：MinerU 解析的 Markdown（左栏渲染，替代旧的假纸张）。
         mineruMd.value = res.data.mineru_md_preview || "";
-        form.contractNo = f.contract_no || "";
-        form.customerName = f.customer_name || "";
-        form.contractName = f.contract_name || "";
-        form.assessmentLine = f.assessment_line || "";
-        form.signingEntity = f.signing_entity || "";
-        form.customerContractNo = f.customer_contract_no || "";
-        form.signDate = f.sign_date || "";
-        form.startDate = f.start_date || "";
-        form.endDate = f.end_date || "";
-        form.amountAttr = f.amount_type || "";
-        form.amount = f.amount != null ? String(f.amount) : "";
-        form.taxRate = f.tax_rate || "";
-        form.settlementTerms = f.settlement_terms || "";
+        applyLedgerValues(form, f);
         // 模块命中 → 核对页关键词区（keywords 是逗号分隔字符串）
         const modMap: Record<string, string> = {
           service: "服务内容",
@@ -900,16 +970,7 @@ onMounted(async () => {
         if (!tab) return;
         tab.id = item.id;
         tab.fileName = item.contract_name + ".pdf";
-        tab.form.contractNo = item.contract_no;
-        tab.form.customerName = item.customer_name;
-        tab.form.contractName = item.contract_name;
-        tab.form.contractType = item.contract_type;
-        tab.form.signDate = item.sign_date
-          ? item.sign_date.substring(0, 10)
-          : "2026-07-15";
-        tab.form.amount = String(item.amount);
-        tab.form.assessmentLine = item.assessment_line || "通用";
-        tab.form.contractStatus = item.contract_status;
+        applyLedgerValues(tab.form, item);
         tab.verified = item.verify_status === 1;
         const [hitRes, keywordRes] = await Promise.all([
           contractApi.getKeywordHits(item.id),
@@ -1089,8 +1150,12 @@ async function handleSaveCurrent() {
       customer_name: f.customerName,
       contract_name: f.contractName,
       assessment_line: f.assessmentLine,
+      bid_no: f.bidNo || null,
+      related_main_no: f.mainContractNo || null,
+      framework_alias: f.frameworkShortName || null,
       signing_entity: f.signingEntity,
       customer_contract_no: f.customerContractNo,
+      contract_type: f.contractType || null,
       sign_date: f.signDate || null,
       start_date: f.startDate || null,
       end_date: f.endDate || null,
@@ -1098,6 +1163,12 @@ async function handleSaveCurrent() {
       amount: f.amount ? Number(String(f.amount).replace(/[^\d.]/g, "")) : null,
       tax_rate: f.taxRate || null,
       settlement_terms: f.settlementTerms || null,
+      post_eval: f.postEval || null,
+      deposit_amount: f.depositAmount ? Number(String(f.depositAmount).replace(/[^\d.]/g, "")) : null,
+      deposit_refund: f.depositRefund || null,
+      arbitration: f.arbitration || null,
+      authorizer: f.authorizer || null,
+      status: f.contractStatus || null,
     };
     try {
       const res = await parseApi.confirm(draftId.value, overrides);
