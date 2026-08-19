@@ -24,9 +24,6 @@
 
       <div class="flex items-center gap-2">
         <el-button v-if="isReadOnly" @click="goBack">关闭</el-button>
-        <el-button v-else @click="handleSaveCurrent">
-          保存已核对数据
-        </el-button>
       </div>
     </div>
 
@@ -705,7 +702,7 @@
             <el-button @click="goBack">取消</el-button>
             <el-button
               type="primary"
-              style="background-color: #049667; border-color: #049667"
+              style="background-color: #f8a42b; border-color: #f8a42b"
               @click="handleSaveCurrent"
             >
               {{
