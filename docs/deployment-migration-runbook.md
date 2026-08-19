@@ -50,6 +50,7 @@
 | 合同 PDF | 服务器已有 81 个（保留，不删除） |
 | 合同 Markdown | 76 个，`manifest.json` 已存在 |
 | 订单台账 `contract_assistant.sys_order` | 9,815 条（审核时间全量补全文件重导后） |
+| 订单 AI 四模块分析 | 336 条完成；2 条 Qwen JSON 格式失败，待以 DeepSeek 定向重试 |
 | 订单 Markdown | 已迁移至 `/data/jingxiaoguan/epms/md-epms` |
 
 ### 数据库纠正记录
@@ -142,7 +143,7 @@ jingxiaoguan-milvus     milvus:v2.4.5
    curl http://127.0.0.1:5174/api/health
    ```
 
-   Nginx 的配置文件来自 `deploy/nginx/jingxiaoguan.conf`：前端静态文件由 `dist` 提供，`/api/` 转发到宿主机 Gateway 的 `3002` 端口。每次切换 `current` 后，执行 `docker compose up -d --force-recreate web`，使容器重新绑定新版本的 `dist` 目录。
+   Nginx 的配置文件来自 `deploy/nginx/jingxiaoguan.conf`：前端静态文件由 `dist` 提供，`/api/` 转发到宿主机 Gateway 的 `3002` 端口。`proxy_pass` **不得以 `/` 结尾**，否则 Nginx 会剥掉 `/api/`，将 `/api/contract/list` 错误转发为 `/contract/list` 并造成连续 404。每次切换 `current` 后，执行 `docker compose up -d --force-recreate web`，使容器重新绑定新版本的 `dist` 目录。
 
 5. 浏览器验收地址为 `http://192.168.101.217:5174`。验收期间保留旧发布目录；失败时只需将 `current` 切回上一版本并依次重启三项 systemd 服务和 `web` 容器。
 
@@ -168,6 +169,9 @@ DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_NAME=contract_assistant
 PG_READONLY_URL=postgresql://jinguan_readonly:<密码>@127.0.0.1:5432/contracts
+
+# Query Agent
+PG_READONLY_URL=postgresql://jinguan_readonly:<密码>@127.0.0.1:5432/contracts
 PG_ORDER_READONLY_URL=postgresql://jinguan_readonly:<密码>@127.0.0.1:5432/contract_assistant
 
 # Parse Service
@@ -176,7 +180,32 @@ PDF_ROOT=/data/jingxiaoguan/contracts/pdf
 MARKDOWN_ROOT=/data/jingxiaoguan/contracts/md-file
 ```
 
-不得沿用开发环境的 `5433`、`pw`、默认 JWT 密钥或泄漏过的 API Key。
+不得沿用开发环境的 `5433`、`pw`、默认 JWT 密钥或泄漏过的 API Key。密码若含 `@`、`/`、`:`、`#` 等字符，必须 URL 编码；否则 Node `pg` 会报 `Invalid URL`，合同台账为空且综合检索无法执行 SQL。
+
+### 6.1 本次部署的服务配置修复清单
+
+1. `gateway.env` 的 `PG_READONLY_URL`、`query-agent.env` 的 `PG_READONLY_URL` 与 `PG_ORDER_READONLY_URL` 必须使用 `127.0.0.1:5432`。两个 URL 分别对应 `contracts` 与 `contract_assistant`；改完后重启 Gateway 和 Query Agent。
+2. Parse Service 是宿主机 systemd 进程，`parse-service.env` 的 `PG_URL` 也必须连接 `127.0.0.1:5432/contracts`；不能使用 Docker Compose 内部服务名 `postgres`。
+3. `jingxiaoguan-parse.service` 必须包含：
+
+   ```ini
+   Environment=PYTHONPATH=/opt/jingxiaoguan/current/apps/parse-service/src
+   ```
+
+   否则会报 `ModuleNotFoundError: No module named 'jinguan_parse'`。若旧服务单元已经安装，可用 `/etc/systemd/system/jingxiaoguan-parse.service.d/pythonpath.conf` 增加同名 `Environment` 覆盖项，随后执行 `systemctl daemon-reload`。
+4. 每个新的 Git release 都是干净目录，`node_modules` 不随 Git 进入发布包。因此切换前必须分别在 `apps/gateway`、`apps/query-agent`、`apps/web` 执行 `npm ci`；漏装 Query Agent 的 `tsx` 会使 `8101` 重启循环。
+5. 前端请求必须使用同源 `/api`（开发环境由 Vite proxy、生产环境由 Nginx 转发），不得让浏览器直接拼接 `:3002`。
+
+### 6.2 订单全量刷新（已确认允许覆盖时）
+
+订单全量导入会在同一事务中清空并重建 `sys_order`、`order_module_hits`、`order_manual_overrides` 与 `contract_order_links`。因此导入前必须备份运营库，并明确告知用户：订单人工编辑和订单—合同关联会被清除；合同库、合同原文件和合同向量不受影响。
+
+推荐顺序：
+
+1. `pg_dump -Fc contract_assistant` 保存带时间戳的备份。
+2. 使用服务器的全量 Excel 与 `ai_keyword_results.json` 调用 `scripts/import_order_ledger.py`，数据库地址使用 URL 编码后密码的 `127.0.0.1:5432` 连接串。
+3. 设置 `MD_DIR=/data/jingxiaoguan/epms/md-epms`，后台运行 `scripts/analyze_order_ai_modules.py`，重新写入 AI 订单四模块。
+4. 校验 `sys_order` 总数、`tag_ai=1` 数量与 `order_module_hits` 的不同订单数。模型 JSON 反复失败的订单，可仅携带 `--order-no` 并改用 DeepSeek 进行定向重试。
 
 ## 7. 当前验收前事项
 
