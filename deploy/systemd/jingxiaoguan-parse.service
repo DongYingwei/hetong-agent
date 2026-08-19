@@ -8,6 +8,8 @@ Type=simple
 User=ubuntu
 WorkingDirectory=/opt/jingxiaoguan/current/apps/parse-service
 EnvironmentFile=/opt/jingxiaoguan/shared/env/parse-service.env
+# 源码采用 src 布局；systemd 不会像本地开发命令一样自动加入该目录。
+Environment=PYTHONPATH=/opt/jingxiaoguan/current/apps/parse-service/src
 ExecStart=/home/ubuntu/miniconda3/envs/jingxiaoguan/bin/uvicorn jinguan_parse.api:build_default_app --factory --host 127.0.0.1 --port 8100
 Restart=always
 RestartSec=5
