@@ -1,0 +1,15 @@
+[Unit]
+Description=Jingxiaoguan EPMS Daily Sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/opt/jingxiaoguan/current/apps/epms-sync
+EnvironmentFile=/opt/jingxiaoguan/shared/env/gateway.env
+EnvironmentFile=/opt/jingxiaoguan/shared/env/epms-sync.env
+Environment=ATTACH_DIR=/data/jingxiaoguan/epms/EPMS
+Environment=MD_DIR=/data/jingxiaoguan/epms/md-epms
+Environment=STATE_PATH=/data/jingxiaoguan/epms/epms-sync-state.json
+ExecStart=/home/ubuntu/miniconda3/envs/jingxiaoguan/bin/python scripts/run_daily.py

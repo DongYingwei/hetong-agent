@@ -34,6 +34,16 @@ cd apps/parse-service
 `md-pdf/manifest.json` 记录完整的 `pdf_sha256 → markdown_file`、原始相对路径、大小和
 转换时间。再次运行会按内容指纹跳过；PDF 改名或从上传临时目录重传也可直接查询：
 
+## 页面上传的原件与 Markdown
+
+页面上传不再只使用临时文件：服务会先把 PDF 写入 `PDF_ROOT/uploads/YYYY/MM/`，再在
+`MARKDOWN_ROOT/uploads/YYYY/MM/` 写入或复用同一内容指纹的 Markdown，并同步更新
+`MARKDOWN_ROOT/manifest.json`。当前合同缓存目录名为 `data/md-file`，核对完成时，这两条相对路径会转入 `contract_sources`，
+用于原文件预览、下载、重解析及向量重建。
+
+生产环境必须在 `.env` 中将 `PDF_ROOT` 和 `MARKDOWN_ROOT` 指向持久数据盘；示例见
+`.env.example`。
+
 ```bash
 python3 scripts/batch_pdf_to_markdown.py \
   --lookup /path/to/new-upload.pdf --output-dir /path/to/pdfs/md-pdf

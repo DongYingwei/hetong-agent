@@ -26,8 +26,8 @@
         <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
-        <p class="text-sm font-medium text-gray-700">点击或拖拽合同文件到此处上传</p>
-        <p class="text-xs text-gray-400 mt-1.5">支持 PDF、Word 格式，单文件不超过 50MB，可同时上传多份合同</p>
+        <p class="text-sm font-medium text-gray-700">选择一个合同文件夹，或拖拽该合同的文件到此处</p>
+        <p class="text-xs text-gray-400 mt-1.5">一次只导入一份合同；支持嵌套目录、PDF/Word，单文件不超过 300MB</p>
       </div>
 
       <!-- 已选择待解析的文件列表 -->

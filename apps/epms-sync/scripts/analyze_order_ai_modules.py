@@ -12,6 +12,7 @@ from import_order_ledger import DEFAULT_AI, database_url, norm_order_no
 
 MODULES = {"role": "项目名称", "service": "服务内容", "tech": "技术要求", "staff": "人员需求"}
 _MODULE_KEYS = "role|service|tech|staff"
+_JSON_KEYS = "role|service|tech|staff|hit|keywords|evidence"
 
 def parse_json(text: str) -> dict:
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text.strip(), re.S | re.I)
@@ -25,6 +26,15 @@ def parse_json(text: str) -> dict:
         # ``}, {"service"``（把下一个属性错误包成对象）。
         repaired = re.sub(rf"\}}\s*\}},\s*\{{\s*\"(?={_MODULE_KEYS}\")", '}, "', text)
         repaired = re.sub(rf"\}}\s*,\s*\{{\s*\"(?={_MODULE_KEYS}\")", '}, "', repaired)
+        # Qwen 还会偶发漏掉同一对象相邻字段的逗号，例如
+        # ``"hit": true "keywords": [...]``。只在固定 schema 的字段名前补逗号，
+        # 不尝试修复 evidence 自由文本内的引号，以免误写错误归类结果。
+        repaired = re.sub(
+            rf'(?:(?<=[\]}}\"])|(?<=true)|(?<=false)|(?<=null)|(?<=\d))(?=\s*"(?:{_JSON_KEYS})"\s*:)',
+            ',',
+            repaired,
+        )
+        repaired = re.sub(r",\s*([}\]])", r"\1", repaired)
         data = json.loads(repaired)
     return data if isinstance(data, dict) else {}
 
@@ -55,7 +65,14 @@ def prepare_markdown(markdown: str, keywords: list[str], max_chars: int = 80_000
             break
     return "\n\n…（省略无关键词段落）…\n\n".join(parts)
 
-def call_model(base_url: str, model: str, project_name: str, markdown: str, keywords: list[str]) -> tuple[dict, str]:
+def call_model(
+    base_url: str,
+    model: str,
+    project_name: str,
+    markdown: str,
+    keywords: list[str],
+    api_key: str = "",
+) -> tuple[dict, str]:
     markdown = prepare_markdown(markdown, keywords)
     prompt = f'''你是订单附件 AI 业绩判定器。该订单全文精确命中的关键词：{", ".join(keywords) or "AI"}。
 把命中的内容按最接近的四个模块归类：项目名称(role)、服务内容(service)、技术要求(tech)、人员需求(staff)。
@@ -67,7 +84,13 @@ def call_model(base_url: str, model: str, project_name: str, markdown: str, keyw
     last_error: Exception | None = None
     for attempt in range(3):
         try:
-            response = requests.post(base_url.rstrip("/") + "/chat/completions", json={"model": model, "temperature": 0, "messages": [{"role":"user", "content":prompt}]}, timeout=300)
+            headers = {"Authorization": f"Bearer {api_key}"} if api_key else None
+            response = requests.post(
+                base_url.rstrip("/") + "/chat/completions",
+                headers=headers,
+                json={"model": model, "temperature": 0, "messages": [{"role":"user", "content":prompt}]},
+                timeout=300,
+            )
             response.raise_for_status()
             raw = response.json()["choices"][0]["message"]["content"]
             return parse_json(raw), raw
@@ -84,6 +107,7 @@ def main() -> None:
     ap.add_argument("--ai-results", type=Path, default=DEFAULT_AI)
     ap.add_argument("--base-url", default=os.getenv("QWEN_BASE", "http://192.168.101.214:6015/v1"))
     ap.add_argument("--model", default=os.getenv("QWEN_MODEL", "Qwen3-30B-A3B"))
+    ap.add_argument("--api-key", default=os.getenv("QWEN_API_KEY", ""), help="OpenAI-compatible API 的 Bearer Token；默认不携带")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--force", action="store_true")
     ap.add_argument("--order-no", action="append", default=[], help="仅重试指定订单号；可重复传入")
@@ -113,7 +137,14 @@ def main() -> None:
                 print(f"[skip] {order_no}: 没有可分析的附件 Markdown", flush=True); skipped += 1; continue
             keywords = stored_terms if isinstance(stored_terms, list) else result.get("hits", [])
             try:
-                answer, raw = call_model(args.base_url, args.model, project_name or "", text, keywords)
+                answer, raw = call_model(
+                    args.base_url,
+                    args.model,
+                    project_name or "",
+                    text,
+                    keywords,
+                    args.api_key,
+                )
                 values = []
                 for key in MODULES:
                     item = answer.get(key) if isinstance(answer.get(key), dict) else {}

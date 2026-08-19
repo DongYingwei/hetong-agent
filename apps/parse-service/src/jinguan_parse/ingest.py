@@ -20,7 +20,7 @@ from typing import Callable
 from psycopg import Connection
 
 from .clients import ExtractClient, MineruClient
-from .extract import ModuleConfig, extract_one_contract
+from .extract import ModuleConfig, extract_one_contract, extract_markdown
 from .keywords import KeywordMatcher
 from .persist import insert_draft
 
@@ -65,7 +65,8 @@ class IngestDeps:
     contract_no_of: Callable[[object, str], str] | None = None
 
 
-def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = False) -> IngestResult:
+def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = False,
+               markdown: str | None = None) -> IngestResult:
     """处理一份 PDF：指纹去重 → 抽取 → 落草稿。失败返回 status=failed，不抛。
 
     force=True：跳过指纹去重（重新解析）。若同指纹草稿已存在，先删旧草稿再重建；
@@ -80,7 +81,10 @@ def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = Fals
             with conn.cursor() as cur:
                 cur.execute("DELETE FROM contracts_draft WHERE source_sha256 = %s", (sha,))
             conn.commit()
-        draft = extract_one_contract(path, deps.mineru, deps.extractor, deps.modules, deps.matcher)
+        # HTTP 上传已先落统一 Markdown 缓存时，禁止重复调用 MinerU；批处理仍沿用原有路径。
+        draft = (extract_markdown(markdown, deps.extractor, deps.modules, deps.matcher)
+                 if markdown is not None
+                 else extract_one_contract(path, deps.mineru, deps.extractor, deps.modules, deps.matcher))
         if deps.contract_no_of is not None:
             contract_no = deps.contract_no_of(draft, path)
         else:

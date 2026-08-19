@@ -39,7 +39,8 @@ app.use(
   koaBody({
     multipart: true,
     formidable: {
-      maxFileSize: 100 * 1024 * 1024, // 100MB 限制
+      // 合同包中的单个原件最大 300MB；合同包数量和业务归属由 /parse/package 校验。
+      maxFileSize: 300 * 1024 * 1024,
       keepExtensions: true,
     },
   })

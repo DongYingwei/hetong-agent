@@ -256,6 +256,29 @@ router.post('/chat', async (ctx) => {
   const result = await chat(String(message).trim(), history, harnessInstruction(decision.kind));
   if (!result.success) return ctx.fail(result.error || '智能体处理失败', result.code || 500);
 
+  // 混合业务统计由 CoreMind 的受控工具完成；不走自由 SQL，也不把合同与订单误混为同一台账。
+  if (result.businessPerformance) {
+    const business = result.businessPerformance;
+    const summaryRows = Array.isArray(business.summary) ? business.summary : [];
+    const response = {
+      content: stripInternalSql(result.content), entity: 'business', records: summaryRows,
+      tableData: summaryRows, business, contracts: [], orders: [],
+      summary: { scope: '混合业务统计', contract_count: Array.isArray(business.single_contracts) ? business.single_contracts.length : 0,
+        order_count: Array.isArray(business.framework_orders) ? business.framework_orders.length : 0,
+        total_amount: summaryRows.reduce((sum, row) => sum + Number(row.business_amount || 0), 0), missing_amount_count: 0 },
+      process: [
+        { label: '识别为合同与订单混合业务统计', status: 'done' },
+        { label: '已筛选单项合同和已确认关联的框架订单', status: 'done' },
+        { label: '已按考核线去重汇总并生成计算过程', status: 'done' },
+      ], citations: [],
+    };
+    const inserted = await query('INSERT INTO agent_messages(session_id, role, content, result_data) VALUES (?, ?, ?, ?) RETURNING id',
+      [session.id, 'assistant', response.content || '未检索到可靠业务依据。', JSON.stringify(response)]);
+    response.resultId = inserted[0]?.id;
+    await query('UPDATE agent_messages SET result_data=? WHERE id=?', [JSON.stringify(response), response.resultId]);
+    return ctx.success({ sessionId: session.id, ...response });
+  }
+
   const entity = decision.kind === 'order-sql' ? 'order' : 'contract';
   const refs = collectRefs(result, entity);
   const records = entity === 'order' ? await loadOrders(refs) : await loadContracts(refs);

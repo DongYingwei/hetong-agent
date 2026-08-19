@@ -4,7 +4,7 @@
 用法（在 apps/epms-sync 目录下，需 .env 配好）::
 
   python3 scripts/run_daily.py                # 读 checkpoint 增量
-  python3 scripts/run_daily.py --start-from 2026-08-16 --end-to 2026-08-17   # 手动指定区间（不回写 checkpoint）
+  python3 scripts/run_daily.py --review-from 2026-08-16 --review-to 2026-08-17   # 手动指定审核时间区间（不回写 checkpoint）
 """
 
 from __future__ import annotations
@@ -24,12 +24,12 @@ from epms_sync.pipeline import run_daily  # noqa: E402
 
 def main() -> None:
     p = argparse.ArgumentParser(description="EPMS 增量同步（导出→下载→解析→AI 判定）")
-    p.add_argument("--start-from", default=None, help="覆盖起始日期 YYYY-MM-DD（手动测试，不回写 checkpoint）")
-    p.add_argument("--end-to", default=None, help="覆盖结束日期 YYYY-MM-DD（默认今天）")
+    p.add_argument("--review-from", "--start-from", dest="review_from", default=None, help="覆盖审核起始日期/时间（手动测试，不回写 checkpoint）")
+    p.add_argument("--review-to", "--end-to", dest="review_to", default=None, help="覆盖审核结束日期/时间（默认今天）")
     args = p.parse_args()
 
     cfg = load_config()
-    run_daily(cfg, start_from=args.start_from, end_to=args.end_to)
+    run_daily(cfg, review_from=args.review_from, review_to=args.review_to)
 
 
 if __name__ == "__main__":

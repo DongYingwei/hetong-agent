@@ -40,6 +40,7 @@ export async function chat(message, history = [], harness) {
       sql: data.sql,
       citations: data.citations,
       source: data.source,
+      businessPerformance: data.businessPerformance,
     };
   } catch (error) {
     const aborted = error.name === 'AbortError';

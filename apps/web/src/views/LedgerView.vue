@@ -199,7 +199,7 @@
           </template>
         </el-table-column>
 
-        <!-- 操作列 (1:1 还原规则: 未核对更多只有删除; 已核对更多有原文件, 编辑, 删除) -->
+        <!-- 未核对可核对；已核对可查看、编辑，原文件以只读核对界面预览。 -->
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <div class="flex items-center gap-2 h-6">
@@ -228,11 +228,11 @@
                       >
                     </template>
 
-                    <!-- 已核对：支持下载原文件与删除。 -->
+                    <!-- 已核对：可编辑；查看原文件进入与编辑相同的只读核对界面。 -->
                     <template v-else>
                       <el-dropdown-item @click="editVerifiedContract(row)">编辑</el-dropdown-item>
-                      <el-dropdown-item @click="downloadOriginal(row)"
-                        >下载原文件</el-dropdown-item
+                      <el-dropdown-item @click="viewOriginal(row)"
+                        >查看原文件</el-dropdown-item
                       >
                       <el-dropdown-item
                         divided
@@ -273,6 +273,7 @@
 
     <!-- 导入合同弹框组件 -->
     <ImportContractModal v-model="showImportModal" @success="loadData" />
+    <ContractSummaryModal v-model="showSummary" :contract="summaryContract" :modules="modules" />
   </div>
 </template>
 
@@ -289,12 +290,15 @@ import { exportFullContractLedgerExcel } from "../utils/excelExporter";
 import { buildModuleFilters, hasModuleAiHit } from "../utils/moduleAi";
 import type { ContractLedger } from "../types";
 import ImportContractModal from "../components/modals/ImportContractModal.vue";
+import ContractSummaryModal from "../components/modals/ContractSummaryModal.vue";
 
 const router = useRouter();
 const dictStore = useDictStore();
 
 const loading = ref(false);
 const showImportModal = ref(false);
+const showSummary = ref(false);
+const summaryContract = ref<ContractLedger | null>(null);
 
 const tableData = ref<ContractLedger[]>([]);
 const total = ref(0);
@@ -395,25 +399,17 @@ function handleVerifyClick(row: ContractLedger) {
   }
 }
 
-async function downloadOriginal(row: ContractLedger) {
-  const token = localStorage.getItem("contract_token") || "";
-  const response = await fetch(contractApi.getOriginalPdfUrl(row.id), {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+function viewOriginal(row: ContractLedger) {
+  router.push({
+    path: "/verify",
+    query: { id: String(row.id), readonly: "true" },
   });
-  if (!response.ok) return ElMessage.error("原文件下载失败");
-  const link = document.createElement("a");
-  link.href = URL.createObjectURL(await response.blob());
-  link.download = `${row.contract_no || "合同原文件"}.pdf`;
-  link.click();
-  URL.revokeObjectURL(link.href);
 }
 
 function handleActionClick(row: ContractLedger) {
   if (row.verify_status === 1) {
-    router.push({
-      path: "/verify",
-      query: { id: String(row.id), readonly: "true" },
-    });
+    summaryContract.value = row;
+    showSummary.value = true;
   } else {
     // 未核对：进行人工核对
     router.push({ path: "/verify", query: { id: String(row.id) } });

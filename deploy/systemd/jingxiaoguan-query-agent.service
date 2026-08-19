@@ -1,0 +1,16 @@
+[Unit]
+Description=Jingxiaoguan Query Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/jingxiaoguan/current/apps/query-agent
+EnvironmentFile=/opt/jingxiaoguan/shared/env/query-agent.env
+ExecStart=/home/ubuntu/miniconda3/envs/jingxiaoguan/bin/node --env-file=/opt/jingxiaoguan/shared/env/query-agent.env --import tsx src/server.ts
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

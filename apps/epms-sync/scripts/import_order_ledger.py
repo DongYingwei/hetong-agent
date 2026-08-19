@@ -103,8 +103,9 @@ def main() -> None:
     with psycopg.connect(args.database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(args.migration.read_text(encoding="utf-8"))
-            # 本导入是用户确认的全量替换：删除的仅是旧订单演示/历史导入，不触碰合同。
-            cur.execute("TRUNCATE order_module_hits, sys_order RESTART IDENTITY")
+            # 本导入是用户确认的全量替换：关联表引用 sys_order，必须在同一条
+            # TRUNCATE 中清空；不触碰合同主数据或合同向量。
+            cur.execute("TRUNCATE contract_order_links, order_manual_overrides, order_module_hits, sys_order RESTART IDENTITY")
             cur.executemany(sql, rows)
         conn.commit()
     result_keys = {norm_order_no(x) for x in ai}

@@ -6,7 +6,7 @@
     destroy-on-close
     class="order-detail-dialog"
   >
-    <template #header><div class="flex items-center justify-between pr-6"><span>订单详情</span><el-button v-if="!editing" type="primary" link @click="beginEdit">编辑</el-button><div v-else><el-button link @click="editing=false">取消</el-button><el-button type="primary" link :loading="saving" @click="saveEdit">保存</el-button></div></div></template>
+    <template #header><div class="flex items-center justify-between pr-6"><span>订单详情</span><div v-if="editing"><el-button link @click="editing=false">取消</el-button><el-button type="primary" link :loading="saving" @click="saveEdit">保存</el-button></div></div></template>
     <div v-if="order" class="space-y-5 overflow-y-auto max-h-[70vh] pr-2">
       <div v-if="editing" class="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <div class="mb-3 text-sm font-medium text-[#303133]">人工编辑（保存为覆盖层，不改写 EPMS 源数据）</div>
@@ -16,7 +16,7 @@
             <el-form label-width="118px" class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <el-form-item v-for="field in section.fields" :key="field.key" :label="field.label">
                 <el-date-picker v-if="field.kind === 'date'" v-model="editForm[field.key]" type="date" value-format="YYYY-MM-DD" class="w-full" clearable />
-                <el-input-number v-else-if="field.kind === 'number'" v-model="editForm[field.key]" class="w-full" :precision="field.precision ?? 2" />
+                <el-input v-else-if="field.kind === 'number'" v-model="editForm[field.key]" inputmode="decimal" clearable />
                 <el-select v-else-if="field.kind === 'income'" v-model="editForm[field.key]" class="w-full">
                   <el-option label="未确认" :value="0" /><el-option label="已确认" :value="1" />
                 </el-select>
@@ -82,14 +82,14 @@
         <h4 class="text-xs font-semibold text-gray-400 mb-3 pb-1.5 border-b border-gray-100">订单金额</h4>
         <div class="grid grid-cols-2 gap-x-5 gap-y-3">
           <div><label class="text-xs text-gray-400">订单状态</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_status || '执行中' }}</div></div>
-          <div><label class="text-xs text-gray-400">订单税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.tax_rate ?? 6 }}%</div></div>
+          <div><label class="text-xs text-gray-400">订单税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRate(order.tax_rate) }}%</div></div>
           <div><label class="text-xs text-gray-400">订单含税总额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrency(order.amount) }}</div></div>
           <div><label class="text-xs text-gray-400">订单不含税总额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrency(order.amount_ex_tax || order.amount * 0.94) }}</div></div>
           <div><label class="text-xs text-gray-400">订单明细单号</label><div class="text-sm text-[#1A1A1A] font-mono mt-0.5">{{ order.detail_order_no || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">客方订单明细单号</label><div class="text-sm text-gray-400 mt-0.5">{{ order.customer_detail_order_no || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">赎期(天)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.redemption_days ?? 0 }}</div></div>
           <div><label class="text-xs text-gray-400">是否末单</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.is_last_order || '否' }}</div></div>
-          <div><label class="text-xs text-gray-400">明细税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.detail_tax_rate ?? order.tax_rate ?? 6 }}%</div></div>
+          <div><label class="text-xs text-gray-400">明细税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRate(order.detail_tax_rate ?? order.tax_rate) }}%</div></div>
           <div><label class="text-xs text-gray-400">明细含税金额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrency(order.detail_amount ?? order.amount) }}</div></div>
           <div><label class="text-xs text-gray-400">明细不含税金额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrency(order.detail_amount_ex_tax || order.amount * 0.94) }}</div></div>
         </div>
@@ -214,6 +214,7 @@ import { ElMessage } from 'element-plus';
 const props = defineProps<{
   modelValue: boolean;
   order: OrderLedger | null;
+  startEditing?: boolean;
 }>();
 
 const emit = defineEmits(['update:modelValue', 'updated']);
@@ -275,6 +276,18 @@ const aiModules = [
 
 watch(() => props.modelValue, (val) => {
   visible.value = val;
+  if (val) {
+    if (props.startEditing) beginEdit();
+    else editing.value = false;
+  } else {
+    editing.value = false;
+  }
+});
+
+watch(() => props.startEditing, (val) => {
+  if (!visible.value) return;
+  if (val) beginEdit();
+  else editing.value = false;
 });
 
 watch(visible, (val) => {
@@ -284,8 +297,12 @@ function beginEdit() {
   if (!props.order) return;
   for (const key of Object.keys(editForm)) delete editForm[key];
   for (const field of editableSections.flatMap((section) => section.fields)) {
-    const value = (props.order as Record<string, unknown>)[field.key];
-    editForm[field.key] = field.kind === 'date' && value ? String(value).slice(0, 10) : (value ?? null);
+    const value = (props.order as unknown as Record<string, unknown>)[field.key];
+    editForm[field.key] = field.kind === 'date' && value
+      ? String(value).slice(0, 10)
+      : field.key === 'tax_rate' || field.key === 'detail_tax_rate'
+        ? formatTaxRate(value)
+        : (value ?? null);
   }
   editingSections.value = editableSections.map((section) => section.name);
   editing.value = true;
@@ -294,11 +311,21 @@ async function saveEdit() {
   if (!props.order) return;
   saving.value = true;
   try {
-    const payload = Object.fromEntries(Object.entries(editForm).map(([key, value]) => [key, value === '' ? null : value]));
+    const payload: Record<string, unknown> = Object.fromEntries(
+      Object.entries(editForm).map(([key, value]) => [key, value === '' ? null : value]),
+    );
+    for (const key of ['tax_rate', 'detail_tax_rate']) {
+      const value = payload[key];
+      if (value === null || value === undefined) continue;
+      const rate = Number(value);
+      if (!Number.isFinite(rate)) throw new Error(`${key === 'detail_tax_rate' ? '明细税率' : '订单税率'}必须为数字`);
+      payload[key] = rate.toFixed(4);
+    }
     const res = await orderApi.update(props.order.id, payload as Partial<OrderLedger>);
     if (res.code !== 200) throw new Error(res.msg);
     Object.assign(props.order, payload);
     editing.value = false;
+    visible.value = false;
     emit('updated');
     ElMessage.success('订单人工修改已保存');
   } catch (e: any) {
@@ -306,6 +333,12 @@ async function saveEdit() {
   } finally {
     saving.value = false;
   }
+}
+
+function formatTaxRate(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const rate = Number(value);
+  return Number.isFinite(rate) ? rate.toFixed(4) : String(value);
 }
 
 function moduleHit(key: string) {

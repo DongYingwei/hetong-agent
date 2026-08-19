@@ -1,7 +1,7 @@
 # epms-sync — EPMS 订单增量同步
 
 从 EPMS 系统增量拉取订单附件，解析为 Markdown 并按订单编号分目录，再做 AI 关键词判定。
-每天凌晨 02:30 自动执行一次（cron），用 checkpoint 记录已统计到的「订单开始日期」，避免全量重拉。
+每天凌晨 02:30 自动执行一次（cron），用 checkpoint 记录已统计到的「审核日期」，避免全量重拉。
 
 ## 流程
 
@@ -37,7 +37,7 @@ pip install -r requirements.txt   # requests/pandas/openpyxl/pymupdf/psycopg/pyt
 ```bash
 cd apps/epms-sync
 python3 scripts/run_daily.py                                    # 读 checkpoint 增量
-python3 scripts/run_daily.py --start-from 2026-08-16 --end-to 2026-08-17  # 手动区间（不回写 checkpoint）
+python3 scripts/run_daily.py --review-from 2026-08-16 --review-to 2026-08-17  # 手动审核时间区间（不回写 checkpoint）
 
 # 全量订单台账导入（仅覆盖运营库 sys_order，不影响合同库 contracts）
 python3 scripts/import_order_ledger.py
@@ -56,8 +56,8 @@ sudo cp cron/epms-sync.cron /etc/cron.d/epms-sync && sudo chmod 644 /etc/cron.d/
 
 ## 增量机制与已知限制
 
-- checkpoint `last_start_time` = 下次拉取的「订单开始日期」起始（含）。每次跑完推进到当天。
-- 增量字段是**订单开始日期 startTime**（接口 `startTimeFrom/endTimeTo`）。
-  因此「开始日期在未来」的订单（提前录入）当天不会被拉取；「开始日期更早但晚录入」的补录单也可能漏。
-  如需更全，可把 `end_to` 顺延若干天（重叠窗口），或改用「接受日期 receiveTime」。
+- checkpoint `last_review_date` = 下次拉取的「审核日期」起始（含）；升级时会自动读取旧字段 `last_start_time`。
+- 增量字段是**审核时间 reviewTime**（接口 `reviewTimeSt/reviewTimeEd`）。日期参数会自动扩展为
+  `00:00:00` 至 `23:59:59`；也可传入完整的 `YYYY-MM-DD HH:MM:SS`。
+  已审核但订单开始日期更早/更晚的订单也会被同步。
 - 已存在的 md 幂等跳过；重复跑同一天不会重复下载（文件存在即跳过）。

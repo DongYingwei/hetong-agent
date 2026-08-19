@@ -1,0 +1,16 @@
+[Unit]
+Description=Jingxiaoguan Gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/jingxiaoguan/current/apps/gateway
+EnvironmentFile=/opt/jingxiaoguan/shared/env/gateway.env
+ExecStart=/home/ubuntu/miniconda3/envs/jingxiaoguan/bin/node --env-file=/opt/jingxiaoguan/shared/env/gateway.env src/index.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

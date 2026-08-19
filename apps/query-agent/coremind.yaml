@@ -26,6 +26,11 @@ tools:
     effect:
       operations: [read]
       reversible: true
+  - path: ./src/business_performance.ts
+    name: business_performance_query
+    effect:
+      operations: [read]
+      reversible: true
 
 agents:
   main:
@@ -69,6 +74,8 @@ agents:
       4. 禁止在同一轮里同时调用两个工具（坑10）：三条路径都是串行——
          纯统计=只 sql_query；纯原文=只 vector_search；联动=先 vector_search 返回后再 sql_query。
          绝不在同一步并发发起两个工具调用；sql_query 用到的 contract_ids 必须来自已返回的 vector_search 结果。
+      5. 用户问“业务/业绩”、或明确要求把单项合同与框架协议订单合计时，调用 business_performance_query；
+         传入年份、AI/具体关键词和可选考核线。不得用 sql_query 跨库拼接、不得自行计算金额。
 
       # RAG 原文作答与出处（走 vector_search mode="fragments" 时必守）
       - 每一条依据都必须标注出处三要素：【合同号】+【来源字段/模块】+【原文引用片段】。

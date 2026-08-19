@@ -7,9 +7,12 @@
           合同号：{{ c?.contract_no }} | {{ c?.customer_name }}
         </p>
       </div>
-      <el-button type="primary" @click="router.push(`/verify?id=${c?.id}`)">{{
-        c?.verify_status === 1 ? "查看核对" : "核对合同"
-      }}</el-button>
+      <div class="flex gap-3">
+        <el-button :disabled="!c" @click="downloadOriginal">下载原文件</el-button>
+        <el-button type="primary" :disabled="!c" @click="editContract">
+          编辑合同
+        </el-button>
+      </div>
     </div>
     <el-tabs v-model="tab"
       ><el-tab-pane label="基本信息" name="basic"
@@ -101,13 +104,14 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import { ElMessage } from "element-plus";
 import { contractApi, type ContractModule } from "../api/contractApi";
 import { formatCurrency, formatDate } from "../utils/formatters";
 import type { ContractLedger } from "../types";
 const route = useRoute(),
   router = useRouter(),
   loading = ref(false),
-  tab = ref("basic"),
+  tab = ref(String(route.query.tab || "basic")),
   c = ref<ContractLedger | null>(null),
   modules = ref<ContractModule[]>([]),
   keywordHits = ref<any[]>([]),
@@ -196,6 +200,24 @@ function moduleName(key: string | null) {
   return (
     modules.value.find((item) => item.module_key === key)?.name || "未归类"
   );
+}
+function editContract() {
+  if (!c.value) return;
+  router.push({ path: "/verify", query: { id: String(c.value.id) } });
+}
+async function downloadOriginal() {
+  if (!c.value) return;
+  const token = localStorage.getItem("contract_token") || "";
+  const response = await fetch(contractApi.getOriginalPdfUrl(c.value.id), {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!response.ok) return ElMessage.error("原文件下载失败");
+  const link = document.createElement("a");
+  const objectUrl = URL.createObjectURL(await response.blob());
+  link.href = objectUrl;
+  link.download = `${c.value.contract_no || "合同原文件"}.pdf`;
+  link.click();
+  URL.revokeObjectURL(objectUrl);
 }
 async function loadPdf() {
   if (!c.value || !sourceId.value) return;

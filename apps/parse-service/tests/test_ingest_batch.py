@@ -19,7 +19,10 @@ _SRC = pathlib.Path(__file__).resolve().parents[1] / "src"
 sys.path.insert(0, str(_SRC))
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 _DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "001_contracts.sql"
+_PACKAGES_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "003_contract_packages.sql"
 _KEYWORD_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "004_configurable_keyword_hits.sql"
+_FULLTEXT_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "005_fulltext_keyword_index.sql"
+_MODULE_SCOPE_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "006_manual_review_and_module_scope.sql"
 _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -65,8 +68,11 @@ def pg():
         assert conn is not None
         with conn.cursor() as cur:
             cur.execute(_DDL.read_text(encoding="utf-8"))
+            cur.execute(_PACKAGES_DDL.read_text(encoding="utf-8"))
             cur.execute(_SEED.read_text(encoding="utf-8"))
             cur.execute(_KEYWORD_DDL.read_text(encoding="utf-8"))
+            cur.execute(_FULLTEXT_DDL.read_text(encoding="utf-8"))
+            cur.execute(_MODULE_SCOPE_DDL.read_text(encoding="utf-8"))
         conn.commit()
         yield conn, dsn
         conn.close()
@@ -153,7 +159,10 @@ def test_http_parse_endpoint(pg, tmp_path):
     from jinguan_parse.api import create_app
     _, dsn = pg
 
-    app = create_app(lambda: psycopg.connect(dsn), _deps())
+    app = create_app(
+        lambda: psycopg.connect(dsn), _deps(),
+        pdf_root=tmp_path / "pdf", markdown_root=tmp_path / "md-pdf",
+    )
     client = fastapi_testclient.TestClient(app)
 
     assert client.get("/health").json() == {"status": "ok"}
@@ -164,3 +173,15 @@ def test_http_parse_endpoint(pg, tmp_path):
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ingested" and body["draft_id"]
+    # 页面上传与批量导入共用 PDF→Markdown 缓存和来源映射，而不是只留临时文件。
+    assert list((tmp_path / "pdf" / "uploads").rglob("*.pdf"))
+    assert list((tmp_path / "md-pdf").rglob("*.md"))
+    assert (tmp_path / "md-pdf" / "manifest.json").is_file()
+    conn = psycopg.connect(dsn)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT source_relative_path, markdown_path FROM contract_sources")
+            source, markdown = cur.fetchone()
+        assert source.startswith("uploads/") and markdown.startswith("uploads/")
+    finally:
+        conn.close()

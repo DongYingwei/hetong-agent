@@ -22,6 +22,8 @@ from .sync import sync_source_update, sync_label_update, ContractNotFound
 from .vector import EmbeddingClient, VectorStore, vectorize_confirmed_contract
 from .confirm import confirm_draft, DraftNotFound
 from .keyword_scan import ScanKeyword, ScanModule, scan_markdown, scan_fulltext_markdown, split_module_paragraphs
+from .pdf_markdown_cache import convert_pdf
+from .upload_storage import persist_pdf_upload
 
 # 核对页要展示/编辑的草稿字段（17 标量 AI 主列 + 手工列 + tag_ai）。
 _DRAFT_FORM_COLS = [
@@ -36,13 +38,18 @@ _DRAFT_FORM_COLS = [
 def create_app(conn_factory, deps: IngestDeps,
                embedder: EmbeddingClient | None = None,
                store: VectorStore | None = None,
-               module_anchors: dict[str, list[str]] | None = None) -> FastAPI:
+               module_anchors: dict[str, list[str]] | None = None,
+               pdf_root: str | Path | None = None,
+               markdown_root: str | Path | None = None) -> FastAPI:
     """装配 app。conn_factory() → 每请求一个 psycopg 连接；deps 为注入的抽取依赖。
 
     embedder/store 供 /sync 片段同步（切片3）；缺省时 /sync 返回 503。
     连接与依赖注入 → 便于测试替换 fake 抽取/向量 + 临时 PG。
     """
     app = FastAPI(title="jinguan-parse", description="合同解析上传入口")
+    repo_root = Path(__file__).resolve().parents[4]
+    source_root = Path(pdf_root or repo_root / "data" / "pdf").resolve()
+    md_root = Path(markdown_root or repo_root / "data" / "md-file").resolve()
 
     @app.get("/health")
     def health():
@@ -52,15 +59,44 @@ def create_app(conn_factory, deps: IngestDeps,
     async def parse(file: UploadFile = File(...), force: bool = False):
         if not file.filename or not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="仅接受 PDF 文件")
-        # 落临时文件（MinerU 客户端按路径读）
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp:
-            tmp.write(await file.read())
-            tmp.flush()
+        # 上传文件先落持久原件目录，再复用或生成与批量导入完全相同的 md-pdf 缓存。
+        # 不能以临时文件作为唯一来源，否则核对完成后无法预览、下载和追溯。
+        try:
+            pdf_path, relative_path, sha = persist_pdf_upload(
+                await file.read(), file.filename, source_root,
+            )
             conn = conn_factory()
             try:
-                result = ingest_one(conn, tmp.name, deps, force=force)
+                duplicate = _existing_source(conn, sha)
             finally:
                 conn.close()
+            # 已确认的同一原件永远只保留一个合同包；force 仅允许重建尚未核对的草稿。
+            if duplicate and (not force or duplicate["contract_id"] is not None):
+                return {
+                    "path": file.filename,
+                    "status": "skipped_duplicate",
+                    "draft_id": duplicate["draft_id"],
+                    "contract_id": duplicate["contract_id"],
+                    "error": None,
+                }
+
+            _, markdown_path = convert_pdf(
+                pdf_path, md_root, deps.mineru, source_root=source_root,
+                markdown_relative_path=relative_path, force=force,
+            )
+            markdown = markdown_path.read_text(encoding="utf-8")
+            conn = conn_factory()
+            try:
+                result = ingest_one(conn, str(pdf_path), deps, force=force, markdown=markdown)
+                if result.status == "ingested" and result.draft_id is not None:
+                    _register_uploaded_source(
+                        conn, result.draft_id, sha, relative_path,
+                        markdown_path.relative_to(md_root).as_posix(), markdown,
+                    )
+            finally:
+                conn.close()
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail={"error": f"上传存储或解析失败: {type(exc).__name__}: {exc}"}) from exc
         payload = {
             "path": file.filename,
             "status": result.status,
@@ -126,7 +162,6 @@ def create_app(conn_factory, deps: IngestDeps,
             conn.close()
         if not row or not row[0]:
             raise HTTPException(status_code=404, detail="该合同未关联原始 PDF")
-        source_root = (Path(__file__).resolve().parents[4] / "data" / "pdf").resolve()
         pdf = (source_root / row[0]).resolve()
         if source_root not in pdf.parents or not pdf.is_file():
             raise HTTPException(status_code=404, detail="已关联的原始 PDF 文件不存在")
@@ -386,14 +421,25 @@ def create_app(conn_factory, deps: IngestDeps,
             raise HTTPException(status_code=503, detail="向量端点未配置，无法同步")
         if not file.filename or not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="仅接受 PDF 文件")
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp:
-            tmp.write(await file.read())
-            tmp.flush()
-            markdown = deps.mineru.parse_pdf(tmp.name)
+        try:
+            pdf_path, relative_path, sha = persist_pdf_upload(
+                await file.read(), file.filename, source_root,
+            )
+            _, markdown_path = convert_pdf(
+                pdf_path, md_root, deps.mineru, source_root=source_root,
+                markdown_relative_path=relative_path,
+            )
+            markdown = markdown_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"原文件存储或解析失败: {exc}") from exc
         conn = conn_factory()
         try:
             r = sync_source_update(conn, contract_id, markdown, embedder, store,
                                    module_anchors=module_anchors)
+            _register_confirmed_source(
+                conn, contract_id, sha, relative_path,
+                markdown_path.relative_to(md_root).as_posix(), markdown,
+            )
         except ContractNotFound as e:
             raise HTTPException(status_code=404, detail=str(e))
         finally:
@@ -419,6 +465,75 @@ def create_app(conn_factory, deps: IngestDeps,
     return app
 
 
+def _existing_source(conn, sha: str) -> dict[str, int | None] | None:
+    """按原件指纹查草稿/正式合同，避免重复上传再次解析。"""
+    with conn.cursor() as cur:
+        cur.execute("""SELECT cp.draft_id, cp.contract_id
+                         FROM contract_sources cs
+                         JOIN contract_packages cp ON cp.id=cs.package_id
+                        WHERE cs.source_sha256=%s
+                        ORDER BY CASE WHEN cp.contract_id IS NULL THEN 0 ELSE 1 END
+                        LIMIT 1""", (sha,))
+        row = cur.fetchone()
+    return {"draft_id": row[0], "contract_id": row[1]} if row else None
+
+
+def _register_uploaded_source(conn, draft_id: int, sha: str, source_relative_path: str,
+                              markdown_path: str, markdown: str) -> None:
+    """把网页上传文件登记成一个合同包，供核对后无缝转为正式合同来源。"""
+    import hashlib
+
+    package_key = f"upload:{sha}"
+    markdown_sha256 = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
+    with conn.cursor() as cur:
+        cur.execute("""INSERT INTO contract_packages(package_key, primary_source_path, draft_id, status)
+                       VALUES (%s,%s,%s,'draft')
+                       ON CONFLICT(package_key) DO UPDATE
+                         SET primary_source_path=EXCLUDED.primary_source_path,
+                             draft_id=EXCLUDED.draft_id, status='draft'
+                       RETURNING id""", (package_key, source_relative_path, draft_id))
+        package_id = cur.fetchone()[0]
+        cur.execute("""INSERT INTO contract_sources
+                         (package_id,source_sha256,source_relative_path,source_type,markdown_path,markdown_sha256,role)
+                       VALUES (%s,%s,%s,'pdf',%s,%s,'primary')
+                       ON CONFLICT(package_id,source_relative_path) DO UPDATE
+                         SET source_sha256=EXCLUDED.source_sha256, markdown_path=EXCLUDED.markdown_path,
+                             markdown_sha256=EXCLUDED.markdown_sha256, role='primary'""",
+                    (package_id, sha, source_relative_path, markdown_path, markdown_sha256))
+    conn.commit()
+
+
+def _register_confirmed_source(conn, contract_id: int, sha: str, source_relative_path: str,
+                               markdown_path: str, markdown: str) -> None:
+    """原文重传后更新正式合同的主原件，保留其余附件记录。"""
+    import hashlib
+
+    markdown_sha256 = hashlib.sha256(markdown.encode("utf-8")).hexdigest()
+    with conn.cursor() as cur:
+        cur.execute("SELECT id FROM contract_packages WHERE contract_id=%s", (contract_id,))
+        row = cur.fetchone()
+        if row is None:
+            cur.execute("""INSERT INTO contract_packages(package_key, primary_source_path, contract_id,
+                                                           status, confirmed_at)
+                           VALUES (%s,%s,%s,'confirmed',now()) RETURNING id""",
+                        (f"contract:{contract_id}", source_relative_path, contract_id))
+            package_id = cur.fetchone()[0]
+        else:
+            package_id = row[0]
+            cur.execute("UPDATE contract_packages SET primary_source_path=%s WHERE id=%s",
+                        (source_relative_path, package_id))
+            cur.execute("UPDATE contract_sources SET role='attachment' WHERE package_id=%s AND role='primary'",
+                        (package_id,))
+        cur.execute("""INSERT INTO contract_sources
+                         (package_id,source_sha256,source_relative_path,source_type,markdown_path,markdown_sha256,role)
+                       VALUES (%s,%s,%s,'pdf',%s,%s,'primary')
+                       ON CONFLICT(package_id,source_relative_path) DO UPDATE
+                         SET source_sha256=EXCLUDED.source_sha256, markdown_path=EXCLUDED.markdown_path,
+                             markdown_sha256=EXCLUDED.markdown_sha256, role='primary'""",
+                    (package_id, sha, source_relative_path, markdown_path, markdown_sha256))
+    conn.commit()
+
+
 def build_default_app() -> FastAPI:
     """生产装配：从 .env 读端点，接真实 MinerU/DeepSeek/PG。"""
     import psycopg
@@ -437,6 +552,8 @@ def build_default_app() -> FastAPI:
         embedder=QwenEmbeddingClient(s),
         store=MilvusVectorStore(s),
         module_anchors={m.module_key: m.anchor_names for m in deps.modules},
+        pdf_root=s.pdf_root,
+        markdown_root=s.markdown_root,
     )
 
 

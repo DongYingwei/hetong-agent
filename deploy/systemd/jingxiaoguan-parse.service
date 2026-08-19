@@ -1,0 +1,16 @@
+[Unit]
+Description=Jingxiaoguan Parse Service
+After=network-online.target jingxiaoguan-postgres.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/opt/jingxiaoguan/current/apps/parse-service
+EnvironmentFile=/opt/jingxiaoguan/shared/env/parse-service.env
+ExecStart=/home/ubuntu/miniconda3/envs/jingxiaoguan/bin/uvicorn jinguan_parse.api:build_default_app --factory --host 127.0.0.1 --port 8100
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

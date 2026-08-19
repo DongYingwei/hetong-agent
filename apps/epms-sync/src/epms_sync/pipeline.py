@@ -12,14 +12,14 @@ from .epms_login import get_cookie_header
 DOWNLOAD_WORKERS = 8
 
 
-def run_daily(cfg: Config, *, start_from: str | None = None, end_to: str | None = None) -> None:
-    today = end_to or date.today().isoformat()
-    last_start = start_from or state.load_last_start_time(
-        cfg.state_path, default=cfg.initial_start_time
+def run_daily(cfg: Config, *, review_from: str | None = None, review_to: str | None = None) -> None:
+    today = review_to or date.today().isoformat()
+    last_review = review_from or state.load_last_review_date(
+        cfg.state_path, default=cfg.initial_review_date
     )
     # 显式指定区间（手动测试）时不回写 checkpoint
-    update_state = start_from is None
-    print(f"[pipeline] 增量区间: startTime [{last_start}, {today}]", file=sys.stderr)
+    update_state = review_from is None
+    print(f"[pipeline] 增量区间: reviewTime [{last_review}, {today}]", file=sys.stderr)
 
     cookie = get_cookie_header(cfg)
     if not cookie:
@@ -29,13 +29,13 @@ def run_daily(cfg: Config, *, start_from: str | None = None, end_to: str | None 
     work_dir = cfg.state_path.parent / ".epms-sync-work"
     try:
         excel_path = export.export_and_enrich(
-            cfg, cookie, start_from=last_start, end_to=today, work_dir=work_dir
+            cfg, cookie, review_from=last_review, review_to=today, work_dir=work_dir
         )
     except RuntimeError as e:
         if "无导出数据" in str(e) or "error" in str(e).lower():
             print(f"[pipeline] 区间内无新订单：{e}，仅推进 checkpoint", file=sys.stderr)
             if update_state:
-                state.save_state(cfg.state_path, last_start_time=today)
+                state.save_state(cfg.state_path, last_review_date=today)
             return
         raise
 
@@ -54,7 +54,7 @@ def run_daily(cfg: Config, *, start_from: str | None = None, end_to: str | None 
 
     # 5) 推进 checkpoint
     if update_state:
-        state.save_state(cfg.state_path, last_start_time=today)
+        state.save_state(cfg.state_path, last_review_date=today)
         print(f"[pipeline] 完成，checkpoint 推进到 {today}", file=sys.stderr)
     else:
         print("[pipeline] 完成（手动区间，未回写 checkpoint）", file=sys.stderr)

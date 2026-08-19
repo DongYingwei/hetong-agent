@@ -5,7 +5,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 class Settings(BaseSettings):
@@ -31,6 +36,11 @@ class Settings(BaseSettings):
 
     milvus_uri: str = "http://localhost:19530"
     pg_url: str = "postgresql://postgres:pw@localhost:5432/contracts"
+
+    # 原始合同与 Markdown 缓存必须是持久目录；生产环境应配置到挂载数据盘。
+    pdf_root: str = str(_REPO_ROOT / "data" / "pdf")
+    # 当前已入库合同的缓存目录为 data/md-file；部署时通过 MARKDOWN_ROOT 保持同一目录。
+    markdown_root: str = str(_REPO_ROOT / "data" / "md-file")
 
     # AI 业绩关键词台账（§6.2 词表来源）。sheet「AI业绩关键词」：A=大方向 B=具体技术。
     ledger_xlsx: str = "demo/合同台账-V2.xlsx"

@@ -121,7 +121,13 @@ def confirm_draft(
                 ),
             )
 
-        # ④ 标记草稿已核对（不删，留审计；confirmed 列在草稿表受 CHECK=0 约束，
+        # ④ 将上传/批量导入时创建的合同包从草稿绑定切换到正式合同。
+        # 必须先清空 draft_id，随后删除草稿时外键不会丢失已确认合同关联。
+        cur.execute("""UPDATE contract_packages
+                          SET draft_id=NULL, contract_id=%s, status='confirmed', confirmed_at=%s
+                        WHERE draft_id=%s""", (contract_id, stamp, draft_id))
+
+        # ⑤ 标记草稿已核对（不删，留审计；confirmed 列在草稿表受 CHECK=0 约束，
         #    故用独立标记：这里删除草稿或加处理标记二选一。首版直接删草稿避免重复核对。）
         cur.execute("DELETE FROM contracts_draft WHERE id = %s", (draft_id,))
 

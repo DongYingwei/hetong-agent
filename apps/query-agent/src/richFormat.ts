@@ -58,6 +58,7 @@ export interface RichChatResponse {
   sql?: string;
   citations?: Citation[];
   source?: "contracts" | "orders";
+  businessPerformance?: Record<string, unknown>;
 }
 
 /** CoreMind 归一化事件里我们只看 tool_call（拿 args.sql / args.query / args.mode）。 */
@@ -170,6 +171,12 @@ export function toRichFormat(turn: TurnLike): RichChatResponse {
   const source = extractSqlSource(turn.events);
   const rows = extractToolResultField(messages, "sql_query", "rows");
   const fragments = extractToolResultField(messages, "vector_search", "fragments");
+  let businessPerformance: Record<string, unknown> | undefined;
+  for (const msg of messages) {
+    if (!isToolResult(msg, "business_performance_query")) continue;
+    const data = toolResultData(msg);
+    if (data && typeof data === "object") businessPerformance = data as Record<string, unknown>;
+  }
 
   const response: RichChatResponse = { content: turn.text ?? "" };
   if (rows && rows.length > 0) {
@@ -180,5 +187,6 @@ export function toRichFormat(turn: TurnLike): RichChatResponse {
   if (fragments && fragments.length > 0) {
     response.citations = fragments as Citation[];
   }
+  if (businessPerformance) response.businessPerformance = businessPerformance;
   return response;
 }

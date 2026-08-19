@@ -41,8 +41,11 @@ class Config:
     md_dir: Path = Path(os.getenv("MD_DIR", str(_REPO_DATA / "md-epms")))
     state_path: Path = Path(os.getenv("STATE_PATH", str(_REPO_DATA / "epms-sync-state.json")))
 
-    # 增量起始日期：已统计到 2026-08-15，从其后（08-16）开始
-    initial_start_time: str = os.getenv("EPMS_INITIAL_START_TIME", "2026-08-16")
+    # 增量审核日期：旧 EPMS_INITIAL_START_TIME 仅为兼容已部署的 .env。
+    initial_review_date: str = os.getenv(
+        "EPMS_INITIAL_REVIEW_DATE",
+        os.getenv("EPMS_INITIAL_START_TIME", "2026-08-16"),
+    )
 
 
 def load_config() -> Config:

@@ -21,6 +21,7 @@ sys.path.insert(0, str(_SRC))
 _ROOT = pathlib.Path(__file__).resolve().parents[3]
 _DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "001_contracts.sql"
 _DDL2 = _ROOT / "packages" / "contracts-db" / "migrations" / "002_contract_md_sync.sql"
+_PACKAGES_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "003_contract_packages.sql"
 _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -68,6 +69,7 @@ def pg_conn():
         with conn.cursor() as cur:
             cur.execute(_DDL.read_text(encoding="utf-8"))
             cur.execute(_DDL2.read_text(encoding="utf-8"))
+            cur.execute(_PACKAGES_DDL.read_text(encoding="utf-8"))
             cur.execute(_SEED.read_text(encoding="utf-8"))
         conn.commit()
         yield conn
@@ -139,6 +141,23 @@ def test_confirm_applies_overrides(pg_conn):
         name, line = cur.fetchone()
     assert name == "智慧工地OneNET框架采购合同"      # override 生效
     assert line == "ISC"
+
+
+def test_confirm_keeps_uploaded_source_package(pg_conn):
+    draft_id = _make_draft(pg_conn, "HT-CONFIRM-SOURCE")
+    with pg_conn.cursor() as cur:
+        cur.execute("""INSERT INTO contract_packages(package_key, primary_source_path, draft_id)
+                       VALUES ('upload:sha-1','uploads/2026/08/x.pdf',%s) RETURNING id""", (draft_id,))
+        package_id = cur.fetchone()[0]
+        cur.execute("""INSERT INTO contract_sources(package_id,source_sha256,source_relative_path,source_type,markdown_path,markdown_sha256,role)
+                       VALUES (%s,'sha-1','uploads/2026/08/x.pdf','pdf','uploads/2026/08/x--sha.md','md-sha','primary')""", (package_id,))
+    pg_conn.commit()
+
+    contract_id = confirm_draft(pg_conn, draft_id, confirmed_by="张三")
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT draft_id, contract_id, status FROM contract_packages WHERE id=%s", (package_id,))
+        draft, confirmed, status = cur.fetchone()
+    assert draft is None and confirmed == contract_id and status == "confirmed"
 
 
 def test_formal_only_confirmed(pg_conn):

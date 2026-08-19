@@ -128,7 +128,7 @@
         </el-table-column>
 
         <el-table-column label="明细税率(%)" width="110" align="right">
-          <template #default="{ row }"> {{ row.tax_rate ?? 6 }}% </template>
+          <template #default="{ row }"> {{ formatTaxRate(row.detail_tax_rate ?? row.tax_rate) }}% </template>
         </el-table-column>
 
         <el-table-column label="明细含税金额" width="140" align="right">
@@ -187,16 +187,12 @@
         </el-table-column>
 
         <!-- 操作 (固定右侧) -->
-        <el-table-column label="操作" width="100" fixed="right" align="center">
+        <el-table-column label="操作" width="130" fixed="right" align="center">
           <template #default="{ row }">
-            <el-button
-              link
-              size="small"
-              style="color: #1f1f1f"
-              @click="handleOpenDetail(row)"
-            >
-              详情
-            </el-button>
+            <div class="flex justify-center gap-2">
+              <el-button link size="small" style="color: #1f1f1f" @click="handleOpenDetail(row)">详情</el-button>
+              <el-button link size="small" type="primary" @click="handleEdit(row)">编辑</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -227,6 +223,7 @@
     <OrderDetailModal
       v-model="showDetailModal"
       :order="currentOrder"
+      :start-editing="detailStartEditing"
       @updated="loadData"
     />
   </div>
@@ -248,6 +245,7 @@ import { exportFullOrderLedgerExcel } from "../utils/excelExporter";
 const loading = ref(false);
 const showDetailModal = ref(false);
 const currentOrder = ref<OrderLedger | null>(null);
+const detailStartEditing = ref(false);
 
 const tableData = ref<OrderLedger[]>([]);
 const modules = ref<ContractModule[]>([]);
@@ -320,8 +318,20 @@ function handleReset() {
 }
 
 function handleOpenDetail(row: OrderLedger) {
+  detailStartEditing.value = false;
   currentOrder.value = row;
   showDetailModal.value = true;
+}
+function handleEdit(row: OrderLedger) {
+  detailStartEditing.value = true;
+  currentOrder.value = row;
+  showDetailModal.value = true;
+}
+
+function formatTaxRate(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '—';
+  const rate = Number(value);
+  return Number.isFinite(rate) ? rate.toFixed(4) : String(value);
 }
 
 async function handleExport() {

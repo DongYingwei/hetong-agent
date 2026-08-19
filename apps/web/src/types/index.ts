@@ -33,6 +33,9 @@ export interface ContractLedger {
   sign_date: string;
   amount: number;
   assessment_line: string;
+  bid_no?: string | null;
+  related_main_no?: string | null;
+  status?: string | null;
   has_ai_keyword: number; // 0否 1是
   contract_status: number; // 1流水中 2已签约 3已闭环 4已作废
   verify_status: number; // 0未核对 1已核对 2异常

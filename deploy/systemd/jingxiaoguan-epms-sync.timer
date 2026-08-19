@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Jingxiaoguan EPMS sync every day at 02:30
+
+[Timer]
+OnCalendar=*-*-* 02:30:00
+Persistent=true
+Unit=jingxiaoguan-epms-sync.service
+
+[Install]
+WantedBy=timers.target

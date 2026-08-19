@@ -37,14 +37,28 @@ def _headers(cfg: Config, cookie: str) -> dict[str, str]:
     }
 
 
+def _review_time(value: str, *, is_end: bool) -> str:
+    """日期参数补齐为 EPMS reviewTime 所需的完整时间；保留调用方提供的精确时间。"""
+    value = value.strip()
+    if " " in value or "T" in value:
+        return value.replace("T", " ")
+    return f"{value} {'23:59:59' if is_end else '00:00:00'}"
+
+
+def _review_query_param(review_from: str, review_to: str) -> dict[str, str]:
+    return {
+        "uuid": "",
+        "reviewState": "",
+        "reviewTimeSt": _review_time(review_from, is_end=False),
+        "reviewTimeEd": _review_time(review_to, is_end=True),
+    }
+
+
 def export_orders_excel(
-    cfg: Config, cookie: str, *, start_from: str, end_to: str, out_path: Path
+    cfg: Config, cookie: str, *, review_from: str, review_to: str, out_path: Path
 ) -> Path:
-    """导出 [start_from, end_to] 的订单完整 Excel（63 列），返回落盘路径。"""
-    qp = json.dumps(
-        {"uuid": "", "reviewState": "", "startTimeFrom": start_from, "endTimeTo": end_to},
-        ensure_ascii=False,
-    )
+    """按审核时间 [review_from, review_to] 导出完整订单 Excel（63 列）。"""
+    qp = json.dumps(_review_query_param(review_from, review_to), ensure_ascii=False)
     qp_encoded = quote(quote(qp, safe=""), safe="")  # 前端 encodeURI(encodeURI(...))
 
     sess = requests.Session()
@@ -109,15 +123,10 @@ def _fetch_rows(cfg: Config, cookie: str, query_param: dict) -> list[dict]:
 
 
 def enrich_uuid(
-    cfg: Config, cookie: str, *, excel_path: Path, out_path: Path, start_from: str, end_to: str
+    cfg: Config, cookie: str, *, excel_path: Path, out_path: Path, review_from: str, review_to: str
 ) -> Path:
-    """拉 toList（相同筛选）建索引，按「订单编号」补 uuid，返回含 uuid 的 Excel。"""
-    query_param = {
-        "uuid": "",
-        "reviewState": "",
-        "startTimeFrom": start_from,
-        "endTimeTo": end_to,
-    }
+    """拉同一审核时间范围的 toList 建索引，按「订单编号」补 uuid。"""
+    query_param = _review_query_param(review_from, review_to)
     rows = _fetch_rows(cfg, cookie, query_param)
     print(f"[export] toList 拉取 {len(rows)} 条用于 uuid 索引", file=sys.stderr)
 
@@ -145,13 +154,13 @@ def enrich_uuid(
 
 
 def export_and_enrich(
-    cfg: Config, cookie: str, *, start_from: str, end_to: str, work_dir: Path
+    cfg: Config, cookie: str, *, review_from: str, review_to: str, work_dir: Path
 ) -> Path:
     """导出 + 补 uuid，返回含 uuid 的 Excel 路径。"""
     work_dir.mkdir(parents=True, exist_ok=True)
     raw = work_dir / "orders_raw.xlsx"
     enriched = work_dir / "orders_with_uuid.xlsx"
-    export_orders_excel(cfg, cookie, start_from=start_from, end_to=end_to, out_path=raw)
+    export_orders_excel(cfg, cookie, review_from=review_from, review_to=review_to, out_path=raw)
     return enrich_uuid(
-        cfg, cookie, excel_path=raw, out_path=enriched, start_from=start_from, end_to=end_to
+        cfg, cookie, excel_path=raw, out_path=enriched, review_from=review_from, review_to=review_to
     )
