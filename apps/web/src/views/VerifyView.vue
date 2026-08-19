@@ -67,6 +67,15 @@
           <span class="text-xs font-medium text-gray-700 truncate">{{
             currentTab.fileName
           }}</span>
+          <el-select
+            v-if="pdfSources.length > 1"
+            v-model="selectedPdfSourceId"
+            size="small"
+            class="w-56"
+            @change="switchPdfSource"
+          >
+            <el-option v-for="source in pdfSources" :key="source.id" :label="source.name" :value="source.id" />
+          </el-select>
           <div class="flex items-center gap-1">
             <button
               class="w-7 h-7 rounded hover:bg-gray-100 flex items-center justify-center text-gray-500 border-none bg-transparent"
@@ -705,6 +714,8 @@ const draftId = computed(() =>
 // 合同原文（MinerU 解析的 Markdown，草稿模式渲染到左栏）。
 const mineruMd = ref("");
 const originalPdfUrl = ref("");
+const pdfSources = ref<Array<{ id: number; name: string }>>([]);
+const selectedPdfSourceId = ref<number>();
 const keywordHits = ref<ContractKeywordHit[]>([]);
 const keywordIdByName = ref<Record<string, number>>({});
 
@@ -914,7 +925,13 @@ onMounted(async () => {
             ]),
           );
         }
-        await loadOriginalPdf(item.id);
+        const sourceRes = await contractApi.getSourceFiles(item.id);
+        if (sourceRes.code === 200) {
+          pdfSources.value = sourceRes.data.list || [];
+          selectedPdfSourceId.value = pdfSources.value[0]?.id;
+          if (pdfSources.value[0]) fileTabs.value[0].fileName = pdfSources.value[0].name;
+        }
+        await loadOriginalPdf(item.id, selectedPdfSourceId.value);
       }
     } catch (e) {
       // 降级使用默认展示数据
@@ -922,9 +939,9 @@ onMounted(async () => {
   }
 });
 
-async function loadOriginalPdf(contractId: number) {
+async function loadOriginalPdf(contractId: number, sourceId?: number) {
   try {
-    const response = await fetch(contractApi.getOriginalPdfUrl(contractId), {
+    const response = await fetch(contractApi.getOriginalPdfUrl(contractId, sourceId), {
       headers: {
         Authorization: `Bearer ${localStorage.getItem("contract_token") || ""}`,
       },
@@ -935,6 +952,13 @@ async function loadOriginalPdf(contractId: number) {
   } catch {
     // 原始文件缺失时自然回退 MinerU Markdown / 空状态，不影响右侧台账信息。
   }
+}
+
+async function switchPdfSource(sourceId: number) {
+  if (!targetId.value) return;
+  const source = pdfSources.value.find((item) => item.id === sourceId);
+  if (source) currentTab.value.fileName = source.name;
+  await loadOriginalPdf(targetId.value, sourceId);
 }
 
 const currentTab = computed(
