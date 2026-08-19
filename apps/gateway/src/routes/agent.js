@@ -2,9 +2,10 @@ import Router from '@koa/router';
 import { randomUUID } from 'node:crypto';
 import { chat } from '../services/agentService.js';
 import { query, queryRead } from '../config/db.js';
-import { classifySearch, harnessInstruction } from '../services/searchHarness.js';
+import { classifySearch, harnessInstruction, MAX_SEARCH_MESSAGE_CHARS } from '../services/searchHarness.js';
 
 const router = new Router({ prefix: '/api/agent' });
+const SESSION_RETENTION_DAYS = 30;
 
 const CONTRACT_COLUMNS = `
   c.id, c.contract_no, c.assessment_line, c.bid_no, c.related_main_no, c.framework_alias,
@@ -150,9 +151,16 @@ function buildProcess(raw, records, entity) {
   return steps;
 }
 
+function decisionProcess(kind) {
+  if (kind === 'business-performance') return '已识别合同与订单混合业绩统计口径';
+  if (kind === 'contract-rag') return '已识别合同原文检索需求';
+  if (kind === 'order-sql') return '已识别订单台账查询条件';
+  return '已识别合同台账查询条件';
+}
+
 async function ownSession(sessionId, userId) {
   const rows = await query(
-    'SELECT id, title, created_at, updated_at FROM agent_sessions WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
+    'SELECT id, title, context_summary, created_at, updated_at FROM agent_sessions WHERE id = ? AND user_id = ? AND deleted_at IS NULL',
     [sessionId, userId],
   );
   return rows[0] || null;
@@ -164,13 +172,30 @@ async function createSession(userId, title = '新检索会话') {
   return { id, title };
 }
 
-async function historyForAgent(sessionId) {
-  const rows = await query('SELECT role, content, result_data FROM agent_messages WHERE session_id = ? ORDER BY id ASC', [sessionId]);
+function updateFactSummary(previous, message, decision, records) {
+  const text = String(message || '');
+  const years = [...new Set([...(previous?.years || []), ...[...text.matchAll(/20\d{2}/g)].map((m) => m[0])])].slice(-5);
+  const line = text.match(/(?:考核线|客户线)[为是：:\s]*([^，。；;、\s]{1,30})/i)?.[1];
+  const refs = records.slice(0, 20).map((item) => ({ id: item.id, no: item.contract_no || item.order_no })).filter((item) => item.id && item.no);
+  return {
+    object: decision.kind === 'order-sql' ? '订单' : decision.kind.startsWith('contract') ? '合同' : previous?.object,
+    years,
+    assessment_line: line || previous?.assessment_line || null,
+    last_query: text.slice(0, 300),
+    references: refs.length ? refs : (previous?.references || []).slice(-20),
+  };
+}
+
+async function historyForAgent(session) {
+  const rows = await query('SELECT role, content, result_data FROM agent_messages WHERE session_id = ? ORDER BY id ASC', [session.id]);
   const recent = rows.slice(-20); // 最近 10 轮完整上下文
   const older = rows.slice(0, -20);
   const summaryRefs = older.flatMap((row) => row.result_data?.contracts || []).slice(-20)
     .map((item) => `${item.id}:${item.contract_no}`);
-  const compact = summaryRefs.length ? [{ role: 'assistant', content: `[较早会话摘要：已检索合同 ${[...new Set(summaryRefs)].join('、')}]` }] : [];
+  const facts = session.context_summary || {};
+  const factText = Object.keys(facts).length ? `[会话事实摘要：${JSON.stringify(facts)}]` : '';
+  const compactText = [factText, summaryRefs.length ? `已检索合同 ${[...new Set(summaryRefs)].join('、')}` : ''].filter(Boolean).join('；');
+  const compact = compactText ? [{ role: 'assistant', content: `[较早会话摘要：${compactText}]` }] : [];
   return [...compact, ...recent].map((row) => {
     let content = row.content;
     if (row.role === 'assistant' && row.result_data?.contracts?.length) {
@@ -186,6 +211,8 @@ router.get('/health', async (ctx) => {
 });
 
 router.get('/sessions', async (ctx) => {
+  await query(`UPDATE agent_sessions SET deleted_at=now()
+    WHERE user_id=? AND deleted_at IS NULL AND updated_at < now() - (?::int * interval '1 day')`, [ctx.state.user.id, SESSION_RETENTION_DAYS]);
   const rows = await query(
     `SELECT s.id, s.title, s.created_at, s.updated_at,
             (SELECT count(*) FROM agent_messages m WHERE m.session_id=s.id) AS message_count
@@ -241,16 +268,23 @@ router.get('/results/:messageId', async (ctx) => {
 router.post('/chat', async (ctx) => {
   const { message, sessionId } = ctx.request.body || {};
   if (!message || !String(message).trim()) return ctx.fail('消息内容不能为空', 400);
+  if (String(message).trim().length > MAX_SEARCH_MESSAGE_CHARS) {
+    return ctx.success({ content: `单次问题最多支持 ${MAX_SEARCH_MESSAGE_CHARS} 个字符。请拆分为“查询条件”和“输出要求”两段后再提交。`, process: [{ label: '已识别输入过长', status: 'done' }] });
+  }
   const userId = ctx.state.user.id;
   let session = sessionId ? await ownSession(sessionId, userId) : null;
   if (!session) session = await createSession(userId, String(message).trim().slice(0, 80));
 
-  const history = await historyForAgent(session.id);
+  const history = await historyForAgent(session);
   await query('INSERT INTO agent_messages(session_id, role, content) VALUES (?, ?, ?)', [session.id, 'user', String(message).trim()]);
   const decision = classifySearch(message);
-  if (decision.kind === 'reject' || decision.kind === 'ambiguous') {
-    const response = { content: decision.reason, entity: 'contract', records: [], contracts: [], summary: summarizeContracts([], 'sql'), citations: [], process: [{ label: decision.kind === 'reject' ? '已识别为非检索问题' : '已识别检索对象', status: 'done' }] };
+  if (['reject', 'clarify', 'welcome', 'too-long'].includes(decision.kind)) {
+    const label = decision.kind === 'welcome' ? '已识别为问候与能力咨询'
+      : decision.kind === 'clarify' ? '已识别查询条件不足'
+        : decision.kind === 'too-long' ? '已识别输入过长' : '已识别为超出查询范围的问题';
+    const response = { content: decision.reason, entity: 'contract', records: [], contracts: [], summary: summarizeContracts([], 'sql'), citations: [], process: [{ label, status: 'done' }] };
     await query('INSERT INTO agent_messages(session_id, role, content, result_data) VALUES (?, ?, ?, ?)', [session.id, 'assistant', response.content, JSON.stringify(response)]);
+    await query('UPDATE agent_sessions SET context_summary=? WHERE id=?', [JSON.stringify(updateFactSummary(session.context_summary, message, decision, [])), session.id]);
     return ctx.success({ sessionId: session.id, ...response });
   }
   const result = await chat(String(message).trim(), history, harnessInstruction(decision.kind));
@@ -276,6 +310,7 @@ router.post('/chat', async (ctx) => {
       [session.id, 'assistant', response.content || '未检索到可靠业务依据。', JSON.stringify(response)]);
     response.resultId = inserted[0]?.id;
     await query('UPDATE agent_messages SET result_data=? WHERE id=?', [JSON.stringify(response), response.resultId]);
+    await query('UPDATE agent_sessions SET context_summary=? WHERE id=?', [JSON.stringify(updateFactSummary(session.context_summary, message, decision, [...(business.single_contracts || []), ...(business.framework_orders || [])])), session.id]);
     return ctx.success({ sessionId: session.id, ...response });
   }
 
@@ -295,14 +330,14 @@ router.post('/chat', async (ctx) => {
     orders: entity === 'order' ? records.slice(0, 5) : [],
     summary,
     citations: result.citations || [],
-    process: buildProcess(result, records, entity),
+    process: [{ label: decisionProcess(decision.kind), status: 'done' }, ...buildProcess(result, records, entity)],
   };
   const inserted = await query('INSERT INTO agent_messages(session_id, role, content, result_data) VALUES (?, ?, ?, ?) RETURNING id',
     [session.id, 'assistant', response.content || '未检索到可靠合同依据。', JSON.stringify(response)]);
   response.resultId = inserted[0]?.id;
   await query('UPDATE agent_messages SET result_data=? WHERE id=?', [JSON.stringify(response), response.resultId]);
-  await query('UPDATE agent_sessions SET title=CASE WHEN title=? THEN ? ELSE title END, updated_at=now() WHERE id=?',
-    ['新检索会话', String(message).trim().slice(0, 80), session.id]);
+  await query('UPDATE agent_sessions SET title=CASE WHEN title=? THEN ? ELSE title END, context_summary=? WHERE id=?',
+    ['新检索会话', String(message).trim().slice(0, 80), JSON.stringify(updateFactSummary(session.context_summary, message, decision, records)), session.id]);
   ctx.success({ sessionId: session.id, ...response });
 });
 

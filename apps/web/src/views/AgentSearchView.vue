@@ -8,7 +8,7 @@
           检索历史
         </h3>
         <el-button link size="small" style="color: #1f1f1f;" @click="handleNewChat">
-          <el-icon class="mr-1"><Plus /></el-icon> 新对话
+          <el-icon class="mr-1"><Plus /></el-icon> 重新开始
         </el-button>
       </div>
 
@@ -48,7 +48,7 @@
           <div class="text-right font-mono text-xs text-gray-400">
             已索引 <span class="font-bold text-[#303133]">{{ indexedContractCount ?? '—' }}</span> 份合同及 <span class="font-bold text-[#303133]">{{ indexedOrderCount ?? '—' }}</span> 条订单
           </div>
-          <el-button type="info" plain size="small" @click="handleClearChat">清空记录</el-button>
+          <el-button type="info" plain size="small" @click="handleClearChat">清空历史</el-button>
         </div>
       </div>
 
@@ -174,7 +174,9 @@
         <div class="flex gap-2">
           <el-input
             v-model="inputQuery"
-            placeholder="输入您的问题，如：服务内容包含AI的合同有哪些、含AI的订单总金额..."
+            :maxlength="MAX_QUERY_CHARS"
+            show-word-limit
+            placeholder="输入合同或订单查询条件，如：服务内容包含AI的合同有哪些、含AI的订单总金额..."
             class="custom-input flex-1"
             @keyup.enter="handleSend"
           >
@@ -338,7 +340,8 @@ function renderContent(md: string): string {
   return renderAssistantContent(md);
 }
 
-const WELCOME = `您好，我是**综合检索智能体**。您可以问我关于合同和订单的任何问题，例如：
+const MAX_QUERY_CHARS = 8000;
+const WELCOME = `您好，我是**综合检索智能体**。我可以查询合同台账、订单台账、AI 关键词、合同原文和业绩统计，例如：
 
 - "服务内容包含AI的合同有多少，提供编号和总金额"
 - "2026年签订的合同有哪些"
@@ -417,6 +420,10 @@ function fillQuery(text: string) {
 async function handleSend() {
   const query = inputQuery.value.trim();
   if (!query) return;
+  if (query.length > MAX_QUERY_CHARS) {
+    ElMessage.warning(`单次问题最多支持 ${MAX_QUERY_CHARS} 个字符，请拆分为查询条件和输出要求后再提交。`);
+    return;
+  }
 
   messages.value.push({ role: 'user', content: query });
   inputQuery.value = '';

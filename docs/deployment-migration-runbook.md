@@ -117,6 +117,14 @@ jingxiaoguan-milvus     milvus:v2.4.5
      jingxiaoguan-query-agent
    ```
 
+   若版本包含综合检索会话事实摘要（`014_agent_session_memory.sql`），必须在重启 Gateway 前执行一次数据库迁移：
+
+   ```bash
+   docker exec -i jingxiaoguan-postgres \
+     psql -U postgres -d contract_assistant -v ON_ERROR_STOP=1 \
+     < "$RELEASE_DIR/apps/gateway/scripts/migrations/014_agent_session_memory.sql"
+   ```
+
 4. `~/jingxiaoguan-infra/compose.yml` 仅管理 PostgreSQL、Milvus、MinIO 和 etcd；前端必须额外配置 `web` 服务。将下列内容添加到 `services:` 下（与 `postgres` 同级）：
 
    ```yaml
