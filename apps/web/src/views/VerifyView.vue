@@ -891,7 +891,7 @@ function applyLedgerValues(form: Record<string, any>, source: Record<string, any
     depositRefund: text(source.deposit_refund),
     arbitration: text(source.arbitration),
     authorizer: text(source.authorizer),
-    contractStatus: text(source.status ?? source.contract_status),
+    contractStatus: text(source.status),
   });
 }
 

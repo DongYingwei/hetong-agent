@@ -18,7 +18,7 @@ function mapContract(row) {
   return {
     ...row,
     has_ai_keyword: row.tag_ai ?? 0,
-    contract_status: 2,
+    contract_status: row.status ?? '',
     verify_status: 1,
     warning_status: row.expiry_warning ? 1 : 0,
   };

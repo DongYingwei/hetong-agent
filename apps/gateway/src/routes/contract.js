@@ -23,12 +23,12 @@ const CONTRACT_COLUMNS = `contracts.id, contracts.contract_no, contracts.assessm
  *   · contract_type 是文本（"框架"等），前端用 dict 映射数字码——原样透传文本，
  *     dict 取不到 label 时前端显示原文，不影响展示。
  *   · 正式入库与人工核对独立；verify_status 由 contract_manual_reviews 决定。
- *   · 查询库无 contract_status/warning_status → 给默认值（2=执行中 / 0=正常）。
+ *   · 合同状态直接使用审核台账原值；空值不再伪造为旧演示页的数字状态。
  */
 function mapContractRow(r) {
   return {
     ...r,
-    contract_status: 2, // 查询库无此列；已入库合同默认"执行中"
+    contract_status: r.status ?? '',
     verify_status: Number(r.review_status || 0),
     warning_status: r.expiry_warning ? 1 : 0,
     has_ai_keyword: r.tag_ai ?? 0,
