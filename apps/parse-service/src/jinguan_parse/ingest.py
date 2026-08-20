@@ -26,12 +26,18 @@ from .keywords import KeywordMatcher
 from .persist import insert_draft
 
 
-_CONTRACT_NO_IN_FILENAME = re.compile(r"(?i)(?:HSKJ/C-)?[A-Z]{1,8}-\d{4,}(?:-[A-Z0-9]+)*")
+_CONTRACT_NO_IN_FILENAME = re.compile(
+    r"(?i)HSKJ/C-[A-Z]{1,8}-\d{4,}(?:-[A-Z0-9]+)*|[A-Z]{1,8}-\d{4,}(?:-[A-Z0-9]+)*"
+)
+_HSKJ_FILENAME_CONTRACT_NO = re.compile(r"(?i)HSKJ[_-]C-([A-Z]{1,8}-\d{4,}(?:-[A-Z0-9]+)*)")
 
 
 def default_contract_no(path: str) -> str:
     """从文件名优先提取常见合同号；无法提取时生成不超过 Milvus 128 字符限制的稳定兜底值。"""
     stem = pathlib.Path(path).stem
+    hskj = _HSKJ_FILENAME_CONTRACT_NO.search(stem)
+    if hskj:
+        return f"HSKJ/C-{hskj.group(1)}"
     matched = _CONTRACT_NO_IN_FILENAME.search(stem)
     if matched:
         return matched.group(0)
