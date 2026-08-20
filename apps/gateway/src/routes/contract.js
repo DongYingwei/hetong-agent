@@ -51,21 +51,33 @@ async function attachModuleHits(rows) {
  * 因而不会进入综合检索、金额统计或导出。
  */
 async function listUnconfirmedParseJobs() {
-  const rows = await queryRead(`SELECT j.id,j.status,j.progress,j.current_file,j.error_message,j.draft_id,j.created_at
+  const rows = await queryRead(`SELECT j.id,j.status,j.progress,j.current_file,j.error_message,j.draft_id,j.created_at,
+      d.contract_name,cp.primary_source_path
     FROM contract_parse_jobs j
+    JOIN contract_packages cp ON cp.id=j.package_id
+    LEFT JOIN contracts_draft d ON d.id=j.draft_id
     WHERE j.status IN ('queued','running','succeeded','failed')
     ORDER BY j.created_at DESC`);
   return rows.map((job) => ({
     id: -Number(job.id),
     parse_job_id: Number(job.id),
     draft_id: job.draft_id,
-    contract_no: job.current_file || '待填写',
-    customer_name: '—', contract_name: job.current_file || '合同解析任务', contract_type: '',
+    // 草稿尚未人工确认，文件名不能被误填为合同号。
+    contract_no: '',
+    customer_name: '—', contract_name: parseJobContractName(job), contract_type: '',
     sign_date: null, amount: null, assessment_line: '—', status: '—',
     expiry_warning: 0, tag_ai: 0, confirmed: 0,
     review_status: job.status === 'failed' ? 2 : job.status === 'succeeded' ? 0 : 3,
     parse_status: job.status, parse_progress: job.progress, parse_error: job.error_message,
   }));
+}
+
+function parseJobContractName(job) {
+  const extracted = String(job.contract_name || '').trim();
+  if (extracted && !extracted.startsWith('DRAFT-')) return extracted;
+  const raw = String(job.current_file || job.primary_source_path || '').trim();
+  const base = raw.split(/[\\/]/).filter(Boolean).pop() || '';
+  return base.replace(/\.(pdf|docx|doc)$/i, '') || '合同解析任务';
 }
 
 /** 查询库中启用的合同模块；运营库旧 contract_section 不参与真实合同检索。 */

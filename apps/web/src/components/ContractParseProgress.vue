@@ -15,7 +15,7 @@
     <div v-else class="max-h-[420px] overflow-y-auto space-y-3 pr-1">
       <div v-for="job in jobs" :key="job.id" class="rounded-lg border border-[#faeae1] bg-[#fffdfa] p-3">
         <div class="flex justify-between gap-2 text-xs">
-          <span class="truncate font-medium text-[#1f1f1f]">{{ job.current_file || `合同任务 #${job.id}` }}</span>
+          <span class="truncate font-medium text-[#1f1f1f]">{{ displayName(job.current_file, job.id) }}</span>
           <span :class="statusClass(job.status)">{{ statusText(job.status) }}</span>
         </div>
         <el-progress class="mt-2" :percentage="job.progress" :stroke-width="7" :show-text="false"
@@ -48,6 +48,11 @@ const router = useRouter();
 const retrying = ref<number | null>(null);
 const activeJobs = computed(() => jobs.value.filter((job) => job.status === 'queued' || job.status === 'running'));
 let timer: ReturnType<typeof setInterval> | undefined;
+
+function displayName(currentFile: string | null | undefined, id: number) {
+  const base = String(currentFile || '').split(/[\\/]/).filter(Boolean).pop();
+  return base || `合同任务 #${id}`;
+}
 
 function statusText(status: ContractParseJob['status']) {
   return ({ queued: '解析中', running: '解析中', succeeded: '待核对', failed: '失败' } as const)[status];
