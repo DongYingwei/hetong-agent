@@ -45,6 +45,8 @@ def convert_pdf(
     mineru: MineruClient,
     source_root: str | pathlib.Path | None = None,
     markdown_relative_path: str | pathlib.Path | None = None,
+    cache_key: str | None = None,
+    source_file: str | pathlib.Path | None = None,
     force: bool = False,
 ) -> tuple[str, pathlib.Path]:
     """转换一份 PDF 并更新映射。
@@ -55,13 +57,14 @@ def convert_pdf(
     pdf = pathlib.Path(pdf_path).resolve()
     root = pathlib.Path(output_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)
-    sha = file_sha256(str(pdf))
+    sha = cache_key or file_sha256(str(pdf))
+    source = pathlib.Path(source_file).resolve() if source_file is not None else pdf
     manifest = _load_manifest(root)
     existing = _entry_for(manifest, sha)
     target = root / (existing["markdown_file"] if existing else _markdown_path(pdf, sha, markdown_relative_path))
 
     if existing and target.is_file() and not force:
-        _remember_source(existing, pdf, source_root)
+        _remember_source(existing, source, source_root)
         _write_manifest(root, manifest)
         return "cached", target
 
@@ -81,7 +84,7 @@ def convert_pdf(
     if existing:
         manifest["entries"].remove(existing)
         entry["sources"] = existing.get("sources", [])
-    _remember_source(entry, pdf, source_root)
+    _remember_source(entry, source, source_root)
     manifest["entries"].append(entry)
     _write_manifest(root, manifest)
     return "converted", target

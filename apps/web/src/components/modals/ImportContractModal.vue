@@ -49,9 +49,9 @@
         </div>
       </div>
       <div class="mt-4 flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2.5 text-xs">
-        <span class="text-gray-600">台账字段识别页数</span>
+        <span class="text-gray-600">本次解析页数</span>
         <el-input v-model="extractionPageLimit" inputmode="numeric" class="w-20" />
-        <span class="text-gray-400">默认前 50 页；全文仍会解析、检索并进入向量库</span>
+        <span class="text-gray-400">默认前 50 页；原始文件完整保存，但仅解析页会进入关键词与向量库</span>
       </div>
     </div>
 

@@ -18,13 +18,14 @@ from fastapi.responses import FileResponse
 from .config import load_settings
 from .clients import HttpMineruClient, DeepSeekExtractClient
 from .ingest import IngestDeps, ingest_one
-from .extract import ModuleConfig, ledger_extraction_context
+from .extract import ModuleConfig
 from .keywords import KeywordMatcher
 from .sync import sync_source_update, sync_label_update, ContractNotFound
 from .vector import EmbeddingClient, VectorStore, vectorize_confirmed_contract
 from .confirm import confirm_draft, DraftNotFound
 from .keyword_scan import ScanKeyword, ScanModule, scan_markdown, scan_fulltext_markdown, split_module_paragraphs
 from .pdf_markdown_cache import convert_pdf
+from .pdf_page_limit import first_pages_for_parse
 from .upload_storage import persist_pdf_upload, persist_upload
 
 # 核对页要展示/编辑的草稿字段（17 标量 AI 主列 + 手工列 + tag_ai）。
@@ -116,16 +117,19 @@ def create_app(conn_factory, deps: IngestDeps,
                     "error": None,
                 }
 
-            _, markdown_path = convert_pdf(
-                pdf_path, md_root, deps.mineru, source_root=source_root,
-                markdown_relative_path=relative_path, force=force,
-            )
+            with first_pages_for_parse(pdf_path, extraction_page_limit) as parse_pdf:
+                _, markdown_path = convert_pdf(
+                    parse_pdf.path, md_root, deps.mineru, source_root=source_root,
+                    markdown_relative_path=relative_path,
+                    cache_key=f"{sha}:first-{parse_pdf.parsed_pages}-pages",
+                    source_file=pdf_path, force=force,
+                )
             markdown = markdown_path.read_text(encoding="utf-8")
             conn = conn_factory()
             try:
                 result = ingest_one(
                     conn, str(pdf_path), deps, force=force, markdown=markdown,
-                    extraction_context=ledger_extraction_context(markdown, extraction_page_limit),
+                    extraction_context=markdown,
                 )
                 if result.status == "ingested" and result.draft_id is not None:
                     _register_uploaded_source(
@@ -180,8 +184,13 @@ def create_app(conn_factory, deps: IngestDeps,
                 source = {"path": path, "relative_path": relative_path, "sha": sha,
                           "source_type": suffix[1:], "markdown_path": None, "markdown": None}
                 if suffix == ".pdf":
-                    _, markdown_path = convert_pdf(path, md_root, deps.mineru, source_root=source_root,
-                                                    markdown_relative_path=relative_path, force=force)
+                    with first_pages_for_parse(path, extraction_page_limit) as parse_pdf:
+                        _, markdown_path = convert_pdf(
+                            parse_pdf.path, md_root, deps.mineru, source_root=source_root,
+                            markdown_relative_path=relative_path,
+                            cache_key=f"{sha}:first-{parse_pdf.parsed_pages}-pages",
+                            source_file=path, force=force,
+                        )
                     markdown = markdown_path.read_text(encoding="utf-8")
                     source["markdown_path"] = markdown_path.relative_to(md_root).as_posix()
                     source["markdown"] = markdown
@@ -193,16 +202,11 @@ def create_app(conn_factory, deps: IngestDeps,
                 f"# 附件：{Path(source['relative_path']).name}\n\n{source['markdown']}"
                 for source in sources if source["markdown"]
             )
-            extraction_markdown = "\n\n".join(
-                f"# 附件：{Path(source['relative_path']).name}\n\n"
-                f"{ledger_extraction_context(source['markdown'], extraction_page_limit)}"
-                for source in sources if source["markdown"]
-            )
             conn = conn_factory()
             try:
                 result = ingest_one(
                     conn, str(pdfs[0][0]), deps, force=force, markdown=merged_markdown,
-                    extraction_context=extraction_markdown,
+                    extraction_context=merged_markdown,
                 )
                 if result.status == "ingested" and result.draft_id is not None:
                     _register_uploaded_package(conn, result.draft_id, package_key, sources)
@@ -565,7 +569,7 @@ def create_app(conn_factory, deps: IngestDeps,
         return {"contract_id": contract_id, "deleted": True}
 
     @app.post("/sync/{contract_id}/source")
-    async def sync_source(contract_id: int, file: UploadFile = File(...)):
+    async def sync_source(contract_id: int, file: UploadFile = File(...), extraction_page_limit: int = 50):
         """原文重传：比 MD5 决定是否重建向量（切片3）。"""
         if embedder is None or store is None:
             raise HTTPException(status_code=503, detail="向量端点未配置，无法同步")
@@ -575,10 +579,14 @@ def create_app(conn_factory, deps: IngestDeps,
             pdf_path, relative_path, sha = persist_pdf_upload(
                 await file.read(), file.filename, source_root,
             )
-            _, markdown_path = convert_pdf(
-                pdf_path, md_root, deps.mineru, source_root=source_root,
-                markdown_relative_path=relative_path,
-            )
+            extraction_page_limit = min(max(extraction_page_limit, 1), 200)
+            with first_pages_for_parse(pdf_path, extraction_page_limit) as parse_pdf:
+                _, markdown_path = convert_pdf(
+                    parse_pdf.path, md_root, deps.mineru, source_root=source_root,
+                    markdown_relative_path=relative_path,
+                    cache_key=f"{sha}:first-{parse_pdf.parsed_pages}-pages",
+                    source_file=pdf_path,
+                )
             markdown = markdown_path.read_text(encoding="utf-8")
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"原文件存储或解析失败: {exc}") from exc
