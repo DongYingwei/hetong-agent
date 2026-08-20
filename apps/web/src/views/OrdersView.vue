@@ -235,6 +235,7 @@ import { Search, Download } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
 import { orderApi, keywordApi, type KeywordItem } from "../api";
 import { buildModuleFilters } from "../utils/moduleAi";
+import { fetchAllFilteredPages } from "../utils/paginatedExport";
 import { formatCurrency, formatDate } from "../utils/formatters";
 import type { OrderLedger } from "../types";
 import OrderDetailModal from "../components/modals/OrderDetailModal.vue";
@@ -346,13 +347,8 @@ function formatTaxRate(value: unknown): string {
 async function handleExport() {
   loading.value = true;
   try {
-    const rows: OrderLedger[] = [];
-    const exportPageSize = 200;
     const activeFilters = buildModuleFilters(moduleFilters, keywordTerms);
-    let exportPage = 1;
-    let expectedTotal = 0;
-
-    do {
+    const rows = await fetchAllFilteredPages(async (exportPage, exportPageSize) => {
       const res = await orderApi.getList({
         page: exportPage,
         pageSize: exportPageSize,
@@ -360,10 +356,8 @@ async function handleExport() {
         moduleFilters: activeFilters,
       });
       if (res.code !== 200) throw new Error(res.msg || "读取订单导出数据失败");
-      rows.push(...res.data.list);
-      expectedTotal = res.data.total;
-      exportPage += 1;
-    } while (rows.length < expectedTotal);
+      return res.data;
+    });
 
     if (!rows.length) {
       ElMessage.warning("当前筛选条件下暂无订单数据可导出");

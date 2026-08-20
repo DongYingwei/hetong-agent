@@ -288,6 +288,7 @@ import { useDictStore } from "../stores/dictStore";
 import { formatCurrency, formatDate } from "../utils/formatters";
 import { exportFullContractLedgerExcel } from "../utils/excelExporter";
 import { buildModuleFilters, hasModuleAiHit } from "../utils/moduleAi";
+import { fetchAllFilteredPages } from "../utils/paginatedExport";
 import type { ContractLedger } from "../types";
 import ImportContractModal from "../components/modals/ImportContractModal.vue";
 import ContractSummaryModal from "../components/modals/ContractSummaryModal.vue";
@@ -466,7 +467,33 @@ function handleDelete(id: number) {
 }
 
 async function handleExport() {
-  await exportFullContractLedgerExcel(tableData.value, "合同台账全量明细");
-  ElMessage.success("导出成功");
+  loading.value = true;
+  try {
+    const activeFilters = buildModuleFilters(moduleFilters, keywordTerms);
+    const rows = await fetchAllFilteredPages(async (exportPage, exportPageSize) => {
+      const res = await contractApi.getList({
+        page: exportPage,
+        pageSize: exportPageSize,
+        keyword: filters.keyword,
+        contractStatus: filters.contractStatus,
+        contractType: filters.contractType,
+        hasAiKeyword: filters.hasAiKeyword,
+        verifyStatus: filters.verifyStatus,
+        moduleFilters: activeFilters,
+      });
+      if (res.code !== 200) throw new Error(res.msg || "读取合同导出数据失败");
+      return res.data;
+    });
+    if (!rows.length) {
+      ElMessage.warning("当前筛选条件下暂无合同数据可导出");
+      return;
+    }
+    await exportFullContractLedgerExcel(rows, "合同台账全量明细");
+    ElMessage.success(`已导出 ${rows.length} 条合同台账数据`);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "合同台账导出失败");
+  } finally {
+    loading.value = false;
+  }
 }
 </script>
