@@ -41,10 +41,9 @@ app.use(
     formidable: {
       // 同一字段名 files 可携带一个合同的多个 PDF/Word 附件；默认 false 会只保留其中一个。
       multiples: true,
-      // 合同包中的单个原件最大 500MB；合同包数量和业务归属由 /parse/package 校验。
-      maxFileSize: 500 * 1024 * 1024,
-      // Formidable 默认总上传量仅 100MB；合同包上传必须显式与单文件上限对齐。
-      maxTotalFileSize: 500 * 1024 * 1024,
+      // 单合同附件最大 500MB；ZIP 合同包最大 1GB，具体格式/大小由解析路由二次校验。
+      maxFileSize: 1024 * 1024 * 1024,
+      maxTotalFileSize: 1024 * 1024 * 1024,
       keepExtensions: true,
     },
   })

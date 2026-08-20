@@ -57,6 +57,22 @@ export interface SourceFile {
   role: string;
 }
 
+export interface ContractParseJob {
+  id: number;
+  package_id: number;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  progress: number;
+  total_files: number;
+  processed_files: number;
+  current_file?: string | null;
+  error_message?: string | null;
+  draft_id?: number | null;
+  extractor_provider: 'qwen' | 'deepseek';
+  attempt_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
 /**
  * 解析侧代理 API —— 上传 PDF → 解析入草稿 → 人工核对 → 入库+建向量。
  * 全经网关 /api/parse/* 转发到解析 FastAPI（解析同步等待，超时给足）。
@@ -75,6 +91,22 @@ export const parseApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 600000,
     });
+  },
+
+  /** 异步上传：上传完成后后台依次进行 MinerU 与字段抽取。 */
+  enqueueJobs(formData: FormData): Promise<ApiResponse<{ jobs: Array<{ id: number | null; name: string; total_files: number; status?: string; draft_id?: number | null; contract_id?: number | null }> }>> {
+    return request.post('/parse/jobs/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      timeout: 0,
+    });
+  },
+
+  getJobs(): Promise<ApiResponse<{ list: ContractParseJob[] }>> {
+    return request.get('/parse/jobs');
+  },
+
+  retryJob(jobId: number): Promise<ApiResponse<{ id: number; status: string; extractor_provider: string }>> {
+    return request.post(`/parse/jobs/${jobId}/retry`);
   },
 
   /** 读草稿全字段供核对页展示。 */

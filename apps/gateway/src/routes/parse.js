@@ -22,6 +22,25 @@ function withTimeout(ms) {
 }
 
 const CONTRACT_PARSE_PAGE_LIMIT = 50;
+const MAX_REGULAR_CONTRACT_FILE_BYTES = 500 * 1024 * 1024;
+const MAX_ZIP_BYTES = 1024 * 1024 * 1024;
+
+function uploadFiles(ctx) {
+  const raw = ctx.request.files?.files || ctx.request.files?.file || ctx.request.files?.upload;
+  return Array.isArray(raw) ? raw : raw ? [raw] : [];
+}
+
+function appendUploadFiles(form, files) {
+  for (const file of files) {
+    const originalName = file.originalFilename || file.newFilename || 'contract.pdf';
+    const ext = originalName.split('.').pop()?.toLowerCase();
+    const limit = ext === 'zip' ? MAX_ZIP_BYTES : MAX_REGULAR_CONTRACT_FILE_BYTES;
+    if (!['pdf', 'doc', 'docx', 'zip'].includes(ext)) throw new Error(`不支持的附件格式：${originalName}`);
+    if (file.size > limit) throw new Error(`${ext === 'zip' ? '合同 ZIP 包' : '合同附件'}超过 ${ext === 'zip' ? '1GB' : '500MB'} 限制：${originalName}`);
+    const buf = fs.readFileSync(file.filepath);
+    form.append('files', new Blob([buf], { type: ext === 'pdf' ? 'application/pdf' : 'application/octet-stream' }), originalName);
+  }
+}
 
 // ① 上传 PDF → 解析入草稿
 router.post('/upload', async (ctx) => {
@@ -61,19 +80,11 @@ router.post('/upload', async (ctx) => {
 
 // 多文件合同包：所有文件属于同一份合同，解析侧合并 PDF 正文后只创建一个草稿。
 router.post('/upload-package', async (ctx) => {
-  const raw = ctx.request.files?.files || ctx.request.files?.file || ctx.request.files?.upload;
-  const files = (Array.isArray(raw) ? raw : raw ? [raw] : []);
+  const files = uploadFiles(ctx);
   if (!files.length) return ctx.fail('未接收到合同文件', 400);
   const form = new FormData();
   try {
-    for (const file of files) {
-      const originalName = file.originalFilename || file.newFilename || 'contract.pdf';
-      const ext = originalName.split('.').pop()?.toLowerCase();
-      if (!['pdf', 'doc', 'docx', 'zip'].includes(ext)) return ctx.fail(`不支持的附件格式：${originalName}`, 400);
-      const buf = fs.readFileSync(file.filepath);
-      const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
-      form.append('files', new Blob([buf], { type: contentType }), originalName);
-    }
+    appendUploadFiles(form, files);
     const force = ctx.query.force === 'true' || ctx.query.force === '1';
     const { signal, clear } = withTimeout(config.parse.timeoutMs);
     try {
@@ -91,6 +102,50 @@ router.post('/upload-package', async (ctx) => {
     for (const file of files) {
       try { fs.unlinkSync(file.filepath); } catch { /* noop */ }
     }
+  }
+});
+
+/** 异步导入：上传完成即返回，不等待 MinerU/大模型。 */
+router.post('/jobs/upload', async (ctx) => {
+  const files = uploadFiles(ctx);
+  if (!files.length) return ctx.fail('未接收到合同文件', 400);
+  const form = new FormData();
+  try {
+    appendUploadFiles(form, files);
+    const resp = await fetch(`${config.parse.url}/jobs/upload?created_by=${encodeURIComponent(ctx.state.user?.username || 'web-upload')}`, {
+      method: 'POST', body: form,
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return ctx.fail(data.detail?.error || data.detail || `上传失败(${resp.status})`, resp.status);
+    ctx.success(data, '文件上传完成，已加入解析队列');
+  } catch (e) {
+    return ctx.fail(e.message || '上传失败', 400);
+  } finally {
+    for (const file of files) {
+      try { fs.unlinkSync(file.filepath); } catch { /* noop */ }
+    }
+  }
+});
+
+router.get('/jobs', async (ctx) => {
+  try {
+    const resp = await fetch(`${config.parse.url}/jobs`);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return ctx.fail(data.detail || '读取解析任务失败', 502);
+    ctx.success(data);
+  } catch (e) {
+    return ctx.fail(`读取解析任务失败: ${e.message}`, 502);
+  }
+});
+
+router.post('/jobs/:id/retry', async (ctx) => {
+  try {
+    const resp = await fetch(`${config.parse.url}/jobs/${ctx.params.id}/retry`, { method: 'POST' });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) return ctx.fail(data.detail || '重新解析失败', resp.status);
+    ctx.success(data, '已加入 DeepSeek 重试队列');
+  } catch (e) {
+    return ctx.fail(`重新解析失败: ${e.message}`, 502);
   }
 });
 

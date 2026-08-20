@@ -46,6 +46,25 @@ async function attachModuleHits(rows) {
   return rows.map((row) => ({ ...mapContractLedgerRow(row), module_hits: byContract.get(row.id) || [] }));
 }
 
+/** 尚未形成正式合同的上传任务，也要在台账最前端可见，防止用户误以为上传丢失。 */
+async function listPendingParseJobs() {
+  const rows = await queryRead(`SELECT j.id,j.status,j.progress,j.current_file,j.error_message,j.draft_id,j.created_at
+    FROM contract_parse_jobs j
+    WHERE j.status IN ('queued','running','failed')
+    ORDER BY j.created_at DESC`);
+  return rows.map((job) => ({
+    id: -Number(job.id),
+    parse_job_id: Number(job.id),
+    draft_id: job.draft_id,
+    contract_no: job.current_file || `解析任务 #${job.id}`,
+    customer_name: '—', contract_name: job.current_file || '合同解析任务', contract_type: '',
+    sign_date: null, amount: null, assessment_line: '—', status: '—',
+    expiry_warning: 0, tag_ai: 0, confirmed: 0,
+    review_status: job.status === 'failed' ? 2 : 3,
+    parse_status: job.status, parse_progress: job.progress, parse_error: job.error_message,
+  }));
+}
+
 /** 查询库中启用的合同模块；运营库旧 contract_section 不参与真实合同检索。 */
 router.get('/modules', async (ctx) => {
   const modules = await queryRead(
@@ -136,10 +155,20 @@ router.get('/list', async (ctx) => {
 
   const fromSql = 'FROM contracts LEFT JOIN contract_manual_reviews cr ON cr.contract_id=contracts.id';
   const countResult = await queryRead(`SELECT COUNT(*) AS total ${fromSql} ${whereSql}`, params);
-  const total = parseInt(countResult[0].total, 10);
-
-  const listSql = `SELECT ${CONTRACT_COLUMNS}, COALESCE(cr.status, 0) AS review_status ${fromSql} ${whereSql} ORDER BY contracts.id DESC LIMIT ${pageSize} OFFSET ${offset}`;
-  const list = await attachModuleHits(await queryRead(listSql, params));
+  let total = parseInt(countResult[0].total, 10);
+  // 解析任务没有正式合同字段；无筛选时按最新优先混入台账，并修正后续分页偏移。
+  const showPending = !keyword && !hasAiKeyword && !moduleKey && !moduleKeyword && !verifyStatus
+    && !contractStatus && !contractType && !requestedModuleKeys.length;
+  const pending = showPending ? await listPendingParseJobs() : [];
+  const globalOffset = (page - 1) * pageSize;
+  const pendingOnPage = pending.slice(globalOffset, globalOffset + pageSize);
+  const officialOffset = Math.max(0, globalOffset - pending.length);
+  const officialLimit = pageSize - pendingOnPage.length;
+  const listSql = `SELECT ${CONTRACT_COLUMNS}, COALESCE(cr.status, 0) AS review_status ${fromSql} ${whereSql}
+                   ORDER BY contracts.id DESC LIMIT ${officialLimit} OFFSET ${officialOffset}`;
+  const rows = [...pendingOnPage, ...await queryRead(listSql, params)];
+  total += pending.length;
+  const list = await attachModuleHits(rows);
 
   ctx.success({ list, total, page, pageSize });
 });

@@ -223,7 +223,14 @@ docker exec -i jingxiaoguan-postgres \
 1. 按 4.1 重建 `jingxiaoguan-web` Nginx 容器，确认 `5174` 能访问前端且 `/api/health` 经反代成功。
 2. 核验 59 份已确认合同的 Milvus 向量，并完成登录、合同/订单台账、多个原文件切换预览、关键词、综合检索、导出和 EPMS 同步验收。
 3. 确认 `jingxiaoguan-epms-sync.timer` 已启用且 `epms-sync.env` 中的 `MD_DIR` 为服务器路径 `/data/jingxiaoguan/epms/md-epms`，不能保留开发机路径。
-4. 合同上传现已支持一次选择多个文件作为同一合同包；暂不支持浏览器直接上传文件夹或嵌套目录。当前上传仅保存、预览和下载附件，不自动解析或合并为合同草稿。
+4. 合同异步导入前先执行查询库迁移；该迁移新增持久任务表，并授予只读台账账号查询权限：
+
+   ```bash
+   docker exec -i jingxiaoguan-postgres psql -U postgres -d contracts -v ON_ERROR_STOP=1 \
+     < /opt/jingxiaoguan/current/packages/contracts-db/migrations/007_async_contract_parse_jobs.sql
+   ```
+
+   页面允许单个 PDF/DOC/DOCX（最大 500MB）或 ZIP（最大 1GB）。ZIP 解包后每个顶层文件夹是一份合同、根目录每个单文件是一份合同；实际解析仅取每个 PDF 前 50 页，原始附件完整保留。上传先返回任务号，后台依次执行 MinerU 和字段抽取；右上角“解析任务”在刷新或重新登录后仍能查看进度。失败任务只能通过“使用 DeepSeek 重试”再次入队。
 
 ## 8. 回滚原则
 

@@ -169,7 +169,9 @@ def test_http_parse_endpoint(pg, tmp_path):
     # 非 PDF 拒绝
     assert client.post("/parse", files={"file": ("x.txt", b"hi", "text/plain")}).status_code == 400
     # PDF 上传 → 落草稿
-    resp = client.post("/parse", files={"file": ("http_c.pdf", b"%PDF-1.4 http", "application/pdf")})
+    import pymupdf
+    doc = pymupdf.open(); doc.new_page(); valid_pdf = doc.tobytes(); doc.close()
+    resp = client.post("/parse", files={"file": ("http_c.pdf", valid_pdf, "application/pdf")})
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "ingested" and body["draft_id"]

@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import hashlib
 import tempfile
+import threading
+import time
 import uuid
 import zipfile
+from dataclasses import replace
 from io import BytesIO
 from pathlib import Path
 
@@ -57,7 +60,7 @@ def _deduplicate_contract_files(files: list[tuple[str, bytes]]) -> list[tuple[st
 
 
 def _extract_contract_zip(content: bytes, archive_name: str) -> list[tuple[str, bytes]]:
-    """安全展开一个合同 ZIP 包，只返回可处理的合同附件。"""
+    """安全展开一个合同 ZIP 包，保留 ZIP 内的相对路径用于合同分组。"""
     try:
         archive = zipfile.ZipFile(BytesIO(content))
     except zipfile.BadZipFile as exc:
@@ -79,10 +82,25 @@ def _extract_contract_zip(content: bytes, archive_name: str) -> list[tuple[str, 
             total_size += info.file_size
             if total_size > _ARCHIVE_MAX_UNCOMPRESSED_BYTES:
                 raise HTTPException(status_code=400, detail="合同压缩包解压后超过 1GB 限制")
-            extracted.append((raw_path.name, archive.read(info)))
+            # 保留顶层目录。调用方据此把「一个文件夹」归为一份合同；根目录文件则各自成合同。
+            extracted.append((raw_path.as_posix(), archive.read(info)))
     if not extracted:
         raise HTTPException(status_code=400, detail="合同压缩包中未找到 PDF、DOC 或 DOCX 文件")
     return extracted
+
+
+def _split_upload_groups(files: list[tuple[str, bytes]]) -> list[tuple[str, list[tuple[str, bytes]]]]:
+    """按 ZIP 顶层目录分合同；根目录的每个文件都是独立合同。"""
+    groups: dict[str, list[tuple[str, bytes]]] = {}
+    for relative_name, content in files:
+        path = Path(relative_name)
+        if len(path.parts) > 1:
+            group = path.parts[0]
+        else:
+            # 用内容名而非临时 UUID，使状态页给出可读的合同名称。
+            group = path.name
+        groups.setdefault(group, []).append((path.name, content))
+    return list(groups.items())
 
 
 def create_app(conn_factory, deps: IngestDeps,
@@ -101,9 +119,191 @@ def create_app(conn_factory, deps: IngestDeps,
     source_root = Path(pdf_root or repo_root / "data" / "pdf").resolve()
     md_root = Path(markdown_root or repo_root / "data" / "md-file").resolve()
 
+    def _set_job_progress(conn, job_id: int, *, processed: int, total: int,
+                          current_file: str, progress: int) -> None:
+        with conn.cursor() as cur:
+            cur.execute("""UPDATE contract_parse_jobs
+                           SET processed_files=%s,total_files=%s,current_file=%s,progress=%s,updated_at=now()
+                         WHERE id=%s""", (processed, total, current_file, progress, job_id))
+        conn.commit()
+
+    def run_one_job() -> bool:
+        """领取并处理一个持久化任务；异常写回任务而非中断 worker。"""
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT j.id,j.package_id,j.extractor_provider FROM contract_parse_jobs j
+                               WHERE j.status='queued' ORDER BY j.queue_order
+                               FOR UPDATE SKIP LOCKED LIMIT 1""")
+                job = cur.fetchone()
+                if not job: return False
+                cur.execute("""UPDATE contract_parse_jobs SET status='running',started_at=now(),finished_at=NULL,
+                               error_message=NULL,attempt_count=attempt_count+1,updated_at=now() WHERE id=%s""", (job[0],))
+                cur.execute("UPDATE contract_packages SET status='running' WHERE id=%s", (job[1],))
+            conn.commit()
+            with conn.cursor() as cur:
+                cur.execute("SELECT id,source_sha256,source_relative_path FROM contract_sources WHERE package_id=%s AND source_type='pdf' ORDER BY CASE WHEN role='primary' THEN 0 ELSE 1 END,id", (job[1],))
+                sources = cur.fetchall()
+            if not sources: raise ValueError('合同包没有可解析的 PDF')
+            markdowns: list[str] = []
+            for index, (source_id, sha, relative) in enumerate(sources, 1):
+                path = (source_root / relative).resolve()
+                if source_root not in path.parents:
+                    raise ValueError('合同附件路径非法')
+                with first_pages_for_parse(path, _CONTRACT_PARSE_PAGE_LIMIT) as limited:
+                    _, md_path = convert_pdf(
+                        limited.path, md_root, deps.mineru, source_root=source_root,
+                        markdown_relative_path=relative,
+                        cache_key=f'{sha}:first-{limited.parsed_pages}-pages', source_file=path,
+                    )
+                markdown = md_path.read_text(encoding='utf-8')
+                markdowns.append(f'# 附件：{Path(relative).name}\n\n{markdown}')
+                with conn.cursor() as cur:
+                    cur.execute("""UPDATE contract_sources SET markdown_path=%s,markdown_sha256=%s
+                                   WHERE id=%s""", (
+                        md_path.relative_to(md_root).as_posix(),
+                        hashlib.sha256(markdown.encode('utf-8')).hexdigest(), source_id,
+                    ))
+                _set_job_progress(conn, job[0], processed=index, total=len(sources),
+                                  current_file=Path(relative).name,
+                                  progress=min(80, index * 80 // len(sources)))
+            merged = '\n\n'.join(markdowns)
+            primary_path = str((source_root / sources[0][2]).resolve())
+            # 明确的“重新解析”只使用 DeepSeek；首轮仍按既有 Qwen 优先、DeepSeek 兜底策略。
+            job_deps = deps
+            if job[2] == 'deepseek':
+                job_deps = replace(deps, extractor=DeepSeekExtractClient(load_settings()))
+            result = ingest_one(conn, primary_path, job_deps, force=(job[2] == 'deepseek'),
+                                markdown=merged, extraction_context=merged)
+            # 任务可重试：同一原件已有草稿时，继续绑定该草稿，而不是把它误记成失败。
+            if result.status == 'skipped_duplicate':
+                with conn.cursor() as cur:
+                    cur.execute('SELECT id FROM contracts_draft WHERE source_sha256=%s', (sources[0][1],))
+                    row = cur.fetchone()
+                result.draft_id = row[0] if row else None
+            if result.status not in {'ingested', 'skipped_duplicate'} or result.draft_id is None:
+                raise ValueError(result.error or '未生成草稿')
+            with conn.cursor() as cur:
+                cur.execute("UPDATE contract_packages SET draft_id=%s,status='draft' WHERE id=%s", (result.draft_id,job[1]))
+                cur.execute("UPDATE contract_parse_jobs SET status='succeeded',draft_id=%s,progress=100,processed_files=%s,finished_at=now(),updated_at=now() WHERE id=%s", (result.draft_id,len(sources),job[0]))
+            conn.commit(); return True
+        except Exception as exc:
+            conn.rollback()
+            if 'job' in locals():
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE contract_parse_jobs SET status='failed',error_message=%s,finished_at=now(),updated_at=now() WHERE id=%s", (f'{type(exc).__name__}: {exc}',job[0]))
+                    cur.execute("UPDATE contract_packages SET status='failed' WHERE id=%s", (job[1],))
+                conn.commit()
+                return True
+            # 缺迁移/连接异常不是“一个任务失败”，不能无间隔空转打满数据库。
+            return False
+        finally: conn.close()
+
+    def worker() -> None:
+        while True:
+            if not run_one_job(): time.sleep(1)
+
+    @app.on_event('startup')
+    def start_parse_worker() -> None:
+        # 旧测试库/尚未执行 007 的环境仍需保留同步接口；异步 worker 只在表存在时启动。
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT to_regclass('public.contract_parse_jobs')")
+                enabled = cur.fetchone()[0] is not None
+        finally:
+            conn.close()
+        if enabled:
+            threading.Thread(target=worker, name='contract-parse-worker', daemon=True).start()
+
     @app.get("/health")
     def health():
         return {"status": "ok"}
+
+    @app.post('/jobs/upload')
+    def enqueue_upload(files: list[UploadFile] = File(...), created_by: str | None = None):
+        """上传只持久化并入队；ZIP 按顶层目录拆分为多份合同。"""
+        raw_files: list[tuple[str, bytes]] = []
+        for upload in files:
+            name = upload.filename or 'contract.pdf'
+            suffix = Path(name).suffix.lower()
+            content = upload.file.read()
+            if suffix == '.zip':
+                raw_files.extend(_extract_contract_zip(content, name))
+            elif suffix in _ARCHIVE_ALLOWED_SUFFIXES:
+                raw_files.append((name, content))
+            else:
+                raise HTTPException(400, '仅支持 PDF、DOC、DOCX 或 ZIP')
+        jobs: list[dict] = []
+        conn = conn_factory()
+        try:
+            for label, group in _split_upload_groups(_deduplicate_contract_files(raw_files)):
+                stored: list[tuple[str, str, str, str]] = []
+                for name, content in group:
+                    _, relative, sha = persist_upload(content, name, source_root)
+                    stored.append((name, relative, sha, Path(name).suffix.lower()[1:]))
+                if not any(item[3] == 'pdf' for item in stored):
+                    raise HTTPException(400, f'合同“{label}”未包含 PDF，暂不能解析')
+                primary = next((item for item in stored if item[3] == 'pdf'), stored[0])
+                duplicate = _existing_source(conn, primary[2])
+                if duplicate is not None:
+                    # 已有草稿/正式合同不重复建包，否则 draft_id 的唯一约束会被破坏。
+                    jobs.append({'id': None, 'name': label, 'total_files': len(stored),
+                                 'status': 'skipped_duplicate', **duplicate})
+                    continue
+                with conn.cursor() as cur:
+                    cur.execute("""INSERT INTO contract_packages(package_key,primary_source_path,status)
+                                   VALUES(%s,%s,'queued') RETURNING id""",
+                                (f'queued:{uuid.uuid4().hex}', primary[1]))
+                    package_id = cur.fetchone()[0]
+                    for name, relative, sha, source_type in stored:
+                        cur.execute("""INSERT INTO contract_sources
+                          (package_id,source_sha256,source_relative_path,source_type,role)
+                          VALUES(%s,%s,%s,%s,%s)""",
+                          (package_id, sha, relative, source_type,
+                           'primary' if relative == primary[1] else 'attachment'))
+                    cur.execute("""INSERT INTO contract_parse_jobs
+                                   (package_id,total_files,current_file,created_by)
+                                   VALUES(%s,%s,%s,%s) RETURNING id""",
+                                (package_id, sum(1 for item in stored if item[3] == 'pdf'), label, created_by))
+                    job_id = cur.fetchone()[0]
+                    jobs.append({'id': job_id, 'name': label, 'total_files': len(stored)})
+            conn.commit()
+            return {'jobs': jobs}
+        finally: conn.close()
+
+    @app.get('/jobs')
+    def list_parse_jobs():
+        conn=conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""SELECT j.id,j.package_id,j.status,j.progress,j.total_files,j.processed_files,
+                                      j.current_file,j.error_message,j.draft_id,j.extractor_provider,
+                                      j.attempt_count,j.created_at,j.updated_at
+                               FROM contract_parse_jobs j ORDER BY j.id DESC LIMIT 100""")
+                cols=['id','package_id','status','progress','total_files','processed_files','current_file',
+                      'error_message','draft_id','extractor_provider','attempt_count','created_at','updated_at']
+                return {'list':[dict(zip(cols,row)) for row in cur.fetchall()]}
+        finally: conn.close()
+
+    @app.post('/jobs/{job_id}/retry')
+    def retry_job(job_id: int):
+        """失败任务由人工触发，下一轮明确切换 DeepSeek，不允许编辑草稿。"""
+        conn = conn_factory()
+        try:
+            with conn.cursor() as cur:
+                cur.execute("""UPDATE contract_parse_jobs SET status='queued',progress=0,processed_files=0,
+                               current_file=NULL,error_message=NULL,extractor_provider='deepseek',
+                               started_at=NULL,finished_at=NULL,updated_at=now()
+                               WHERE id=%s AND status='failed' RETURNING id""", (job_id,))
+                row = cur.fetchone()
+                if row is None:
+                    raise HTTPException(409, '仅解析失败的合同可重新解析')
+                cur.execute("UPDATE contract_packages SET status='queued' WHERE id=(SELECT package_id FROM contract_parse_jobs WHERE id=%s)", (job_id,))
+            conn.commit()
+            return {'id': job_id, 'status': 'queued', 'extractor_provider': 'deepseek'}
+        finally:
+            conn.close()
 
     @app.post("/parse")
     def parse(file: UploadFile = File(...), force: bool = False):

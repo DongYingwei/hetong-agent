@@ -135,7 +135,7 @@
               "
               @click="handleVerifyClick(row)"
             >
-              {{ dictStore.getLabel("verify_status", row.verify_status) }}
+              {{ verifyStatusText(row) }}
             </span>
           </template>
         </el-table-column>
@@ -393,7 +393,17 @@ function moduleHitText(row: ContractLedger, moduleKey: string): string {
 }
 
 function goToDetail(id: number) {
+  if (id < 0) {
+    ElMessage.info('该合同仍在解析中或解析失败，请在右上角“解析任务”查看进度或重试');
+    return;
+  }
   router.push(`/detail/${id}`);
+}
+
+function verifyStatusText(row: ContractLedger) {
+  if (row.verify_status === 3) return `解析中${row.parse_progress ? ` ${row.parse_progress}%` : ''}`;
+  if (row.verify_status === 2 && row.parse_job_id) return '解析失败';
+  return dictStore.getLabel('verify_status', row.verify_status);
 }
 
 function goToCompare(id: number) {
@@ -401,6 +411,10 @@ function goToCompare(id: number) {
 }
 
 function handleVerifyClick(row: ContractLedger) {
+  if (row.parse_job_id) {
+    ElMessage.info(row.verify_status === 2 ? '解析失败，请在右上角“解析任务”使用 DeepSeek 重试' : '合同解析中，暂不能核对或编辑');
+    return;
+  }
   if (row.verify_status === 1) {
     router.push({ path: "/verify", query: { id: String(row.id) } });
   } else {
@@ -417,6 +431,10 @@ function viewOriginal(row: ContractLedger) {
 }
 
 function handleActionClick(row: ContractLedger) {
+  if (row.parse_job_id) {
+    ElMessage.info(row.verify_status === 2 ? '解析失败，请在右上角“解析任务”使用 DeepSeek 重试' : '合同解析中，暂不能编辑');
+    return;
+  }
   if (row.verify_status === 1) {
     summaryContract.value = row;
     showSummary.value = true;

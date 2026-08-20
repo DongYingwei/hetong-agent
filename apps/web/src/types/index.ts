@@ -40,6 +40,11 @@ export interface ContractLedger {
   contract_status: number | string; // 审核版台账保留原始状态文字；旧数据兼容数字编码
   verify_status: number; // 0未核对 1已核对 2异常
   warning_status?: number;
+  /** 未完成解析任务在台账首屏使用负 id 占位，不可编辑。 */
+  parse_job_id?: number;
+  parse_status?: 'queued' | 'running' | 'failed';
+  parse_progress?: number;
+  parse_error?: string | null;
   create_time?: string;
   // 查询库 contract_module_hits 的真实命中明细（动态模块列使用）。
   module_hits?: Array<{

@@ -26,13 +26,13 @@
         <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
-        <p class="text-sm font-medium text-gray-700">选择单合同文件、多个附件或合同 ZIP 包</p>
-        <p class="text-xs text-gray-400 mt-1.5">可多次点击追加附件；同一组文件只生成一份合同草稿；单文件不超过 500MB</p>
+        <p class="text-sm font-medium text-gray-700">选择合同文件或合同 ZIP 包</p>
+        <p class="text-xs text-gray-400 mt-1.5">单个文件是一份合同；ZIP 顶层文件夹各是一份合同；附件最大 500MB、ZIP 最大 1GB</p>
       </div>
 
       <!-- 已选择待解析的文件列表 -->
       <div v-if="selectedFiles.length > 0" class="mt-4 space-y-2 max-h-48 overflow-y-auto pr-1">
-        <div class="text-xs font-semibold text-gray-500 mb-1">待解析合同文件 ({{ selectedFiles.length }})</div>
+        <div class="text-xs font-semibold text-gray-500 mb-1">待上传文件 ({{ selectedFiles.length }})</div>
         <div
           v-for="(file, index) in selectedFiles"
           :key="index"
@@ -48,7 +48,7 @@
           </el-icon>
         </div>
       </div>
-      <p class="mt-4 text-xs text-gray-400">为避免超长合同解析超时，系统默认仅识别前 50 页；原始文件仍完整保存。</p>
+      <p class="mt-4 text-xs text-gray-400">上传完成即进入后台队列；系统默认只识别每份 PDF 前 50 页，原始文件仍完整保存。</p>
     </div>
 
     <!-- 阶段 2：AI 智能解析进度 -->
@@ -116,7 +116,7 @@
             :disabled="selectedFiles.length === 0"
             @click="startParsing"
           >
-            <el-icon class="mr-1"><Cpu /></el-icon> 开始 AI 解析
+            <el-icon class="mr-1"><Cpu /></el-icon> 上传并加入解析队列
           </el-button>
         </template>
 
@@ -206,16 +206,15 @@ function handleFileDrop(e: DragEvent) {
 }
 
 function selectContractFiles(files: File[]) {
-  if (files.some((file) => file.size > 500 * 1024 * 1024)) {
-    ElMessage.error('单个合同文件不能超过 500MB');
+  if (files.some((file) => file.size > (file.name.toLowerCase().endsWith('.zip') ? 1024 : 500) * 1024 * 1024)) {
+    ElMessage.error('合同附件不能超过 500MB，ZIP 合同包不能超过 1GB');
     return;
   }
   if (files.some((file) => !/\.(pdf|doc|docx|zip)$/i.test(file.name))) {
     ElMessage.error('仅支持 PDF、DOC、DOCX 或 ZIP 格式的合同文件');
     return;
   }
-  // 用户可能先选择主合同、再追加扫描件/补充协议；不能用后一次选择覆盖前一次。
-  // 同一浏览器会话中的文件以名称、大小、最后修改时间作稳定去重。
+  // 每个独立上传文件是一份合同；ZIP 内部再按顶层目录拆分。浏览器会话内稳定去重。
   const existing = new Set(selectedFiles.value.map(fileKey));
   const additions = files.filter((file) => !existing.has(fileKey(file)));
   selectedFiles.value.push(...additions);
@@ -268,31 +267,13 @@ async function startParsing() {
   try {
     const formData = new FormData();
     selectedFiles.value.forEach((file) => formData.append('files', file));
-    currentParsingHint.value = `正在解析 ${selectedFiles.value.length} 个合同附件（MinerU + LLM，大文件可能数分钟）...`;
-    const res = await parseApi.uploadPackage(formData);
-    if (res.code !== 200) throw new Error(res.msg || '合同包解析失败');
-    // 重复上传已核对合同不会生成草稿；这不是解析失败，应明确告知用户。
-    if (!res.data?.draft_id) {
-      if (res.data?.contract_id) {
-        ElMessage.info('该合同已存在且已核对，无需重复导入');
-        visible.value = false;
-        emit('success');
-        return;
-      }
-      throw new Error(res.msg || '合同包未生成可核对草稿');
-    }
-    const f = (res.data.draft?.form ?? {}) as DraftForm;
-    parsedResults.value = [{
-      draft_id: res.data.draft_id,
-      contract_name: f.contract_name || selectedFiles.value[0]?.name.replace(/\.[^/.]+$/, '') || '待填写',
-      contract_no: f.contract_no || '待填写',
-      customer_name: f.customer_name || '',
-    }];
-    progressPercent.value = 100;
-    phase.value = 'done';
-    ElMessage.success(res.data.status === 'skipped_duplicate'
-      ? '合同附件已存在，已打开原草稿待核对'
-      : '合同包解析完成，已生成一份草稿待人工核对');
+    const res = await parseApi.enqueueJobs(formData);
+    if (res.code !== 200) throw new Error(res.msg || '合同上传失败');
+    const jobCount = res.data?.jobs?.length || 0;
+    visible.value = false;
+    resetImport();
+    emit('success');
+    ElMessage.success(`上传完成，已创建 ${jobCount} 个解析任务；右上角可查看进度`);
   } catch (err: any) {
     ElMessage.error(`解析失败：${err?.response?.data?.msg || err?.message || '未知错误'}`);
     phase.value = 'upload';
