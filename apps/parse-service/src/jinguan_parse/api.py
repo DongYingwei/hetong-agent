@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import tempfile
 import uuid
 import zipfile
@@ -41,6 +42,18 @@ _ARCHIVE_ALLOWED_SUFFIXES = {".pdf", ".doc", ".docx"}
 _ARCHIVE_MAX_FILES = 200
 _ARCHIVE_MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GiB，防 ZIP 炸弹
 _CONTRACT_PARSE_PAGE_LIMIT = 50
+
+
+def _deduplicate_contract_files(files: list[tuple[str, bytes]]) -> list[tuple[str, bytes]]:
+    """合同包按内容指纹去重；不同文件名但内容相同的 PDF 只保留第一份。"""
+    seen: set[str] = set()
+    unique: list[tuple[str, bytes]] = []
+    for name, content in files:
+        digest = hashlib.sha256(content).hexdigest()
+        if digest not in seen:
+            seen.add(digest)
+            unique.append((name, content))
+    return unique
 
 
 def _extract_contract_zip(content: bytes, archive_name: str) -> list[tuple[str, bytes]]:
@@ -180,6 +193,7 @@ def create_app(conn_factory, deps: IngestDeps,
                     expanded_files.append((name, content))
                 else:
                     raise HTTPException(status_code=400, detail=f"不支持的附件格式：{name}")
+            expanded_files = _deduplicate_contract_files(expanded_files)
             for name, content in expanded_files:
                 suffix = Path(name).suffix.lower()
                 path, relative_path, sha = persist_upload(content, name, source_root)
