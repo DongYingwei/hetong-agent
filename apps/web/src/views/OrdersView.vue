@@ -233,8 +233,7 @@
 import { ref, reactive, onMounted } from "vue";
 import { Search, Download } from "@element-plus/icons-vue";
 import { ElMessage } from "element-plus";
-import { orderApi, keywordApi, contractApi, type KeywordItem } from "../api";
-import type { ContractModule } from "../api/contractApi";
+import { orderApi, keywordApi, type KeywordItem } from "../api";
 import { buildModuleFilters } from "../utils/moduleAi";
 import { formatCurrency, formatDate } from "../utils/formatters";
 import type { OrderLedger } from "../types";
@@ -248,8 +247,19 @@ const currentOrder = ref<OrderLedger | null>(null);
 const detailStartEditing = ref(false);
 
 const tableData = ref<OrderLedger[]>([]);
-const modules = ref<ContractModule[]>([]);
-const moduleFilters = reactive<Record<string, string>>({});
+/**
+ * 订单解析和筛选的业务口径固定为四个模块。
+ * 订单台账不应因为模块配置接口不可用、改名或调整适配范围而丢失筛选条件。
+ */
+const modules = [
+  { module_key: "role", name: "项目名称" },
+  { module_key: "service", name: "服务内容" },
+  { module_key: "tech", name: "技术要求" },
+  { module_key: "staff", name: "人员需求" },
+] as const;
+const moduleFilters = reactive<Record<string, string>>(
+  Object.fromEntries(modules.map((module) => [module.module_key, ""])),
+);
 
 function moduleHit(row: OrderLedger, key: string) {
   return !!row.module_hits?.some((x) => x.module_key === key && x.hit === 1);
@@ -264,38 +274,30 @@ const filters = reactive({
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
-/** 筛选项加载失败不能导致订单列表或四个模块筛选项消失。 */
-async function loadFilterOptions() {
-  const [keywordResult, moduleResult] = await Promise.allSettled([
-    keywordApi.getList({ page: 1, pageSize: 200 }),
-    contractApi.getModules(),
-  ]);
-
-  if (keywordResult.status === "fulfilled" && keywordResult.value.code === 200) {
-    keywordResult.value.data.list.forEach((item: KeywordItem) =>
+/** 关键词仍由关键词管理提供；失败不影响四个固定筛选项和订单列表。 */
+async function loadKeywordOptions() {
+  try {
+    const response = await keywordApi.getList({ page: 1, pageSize: 200 });
+    if (response.code !== 200) return;
+    response.data.list.forEach((item: KeywordItem) =>
       keywordTerms.set(item.keyword_name, [
         item.keyword_name,
         ...(item.sub_words || []),
       ]),
     );
-    keywordOptions.value = keywordResult.value.data.list.map((item: KeywordItem) => ({
+    keywordOptions.value = response.data.list.map((item: KeywordItem) => ({
       label: item.keyword_name,
       value: item.keyword_name,
     }));
-  }
-
-  if (moduleResult.status === "fulfilled" && moduleResult.value.code === 200) {
-    modules.value = moduleResult.value.data.list;
-    modules.value.forEach((module) => {
-      moduleFilters[module.module_key] ??= "";
-    });
+  } catch {
+    // request 拦截器负责提示；固定模块筛选无需降级处理。
   }
 }
 
 onMounted(() => {
-  // 首屏订单列表与筛选元数据独立；筛选接口慢/失败时仍可看到账本。
+  // 首屏订单列表与关键词选项独立，四个模块不依赖远端配置。
   void loadData();
-  void loadFilterOptions();
+  void loadKeywordOptions();
 });
 
 async function loadData() {
