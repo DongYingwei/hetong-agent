@@ -5,7 +5,7 @@
 ## Language
 
 **正式库 (Formal DB)**：
-经人工核对背书的合同记录所在表 `contracts`。查询智能体只读此表——库内数据的可信度由人工核对保证，这是 >90% 准确率的核心前提。
+已进入正式合同库的合同记录所在表 `contracts`。正式入库（`confirmed=1`）与页面人工核对状态不同：后者以 `contract_manual_reviews.status` 为准，缺失记录即待核对。查询智能体只读正式库，不查询草稿区。
 _Avoid_: 草稿区、contracts_draft（那是解析模块的中间态，查询不碰）
 
 **金额口径 (Amount Type / `amount_type`)**：

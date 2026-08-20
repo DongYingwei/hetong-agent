@@ -4,6 +4,7 @@ import { chat } from '../services/agentService.js';
 import { query, queryRead } from '../config/db.js';
 import { classifySearch, harnessInstruction, MAX_SEARCH_MESSAGE_CHARS } from '../services/searchHarness.js';
 import { constraintsInstruction, extractSearchConstraints, filterRecordsByConstraints } from '../services/searchConstraints.js';
+import { mapContractLedgerRow } from '../services/contractLedgerMapping.js';
 
 const router = new Router({ prefix: '/api/agent' });
 const SESSION_RETENTION_DAYS = 30;
@@ -14,16 +15,6 @@ const CONTRACT_COLUMNS = `
   c.sign_date, c.start_date, c.end_date, c.amount, c.amount_type, c.tax_rate,
   c.settlement_terms, c.post_eval, c.deposit_amount, c.deposit_refund, c.arbitration,
   c.authorizer, c.status, c.expiry_warning, c.tag_ai`;
-
-function mapContract(row) {
-  return {
-    ...row,
-    has_ai_keyword: row.tag_ai ?? 0,
-    contract_status: row.status ?? '',
-    verify_status: 1,
-    warning_status: row.expiry_warning ? 1 : 0,
-  };
-}
 
 function stripInternalSql(content) {
   return String(content || '')
@@ -65,14 +56,16 @@ async function loadContracts(refs) {
             COALESCE(jsonb_agg(jsonb_build_object(
               'module_key', cm.module_key, 'hit', cm.hit, 'keywords', cm.keywords,
               'category', cm.category, 'raw_text', cm.raw_text
-            ) ORDER BY cm.module_key) FILTER (WHERE cm.id IS NOT NULL), '[]'::jsonb) AS module_hits
+            ) ORDER BY cm.module_key) FILTER (WHERE cm.id IS NOT NULL), '[]'::jsonb) AS module_hits,
+            COALESCE(MAX(cr.status), 0) AS review_status
        FROM contracts c
        LEFT JOIN contract_module_hits cm ON cm.contract_id=c.id
+       LEFT JOIN contract_manual_reviews cr ON cr.contract_id=c.id
       WHERE c.id = ANY($1::bigint[]) OR c.contract_no = ANY($2::text[])
       GROUP BY c.id`,
     [refs.ids, refs.nos],
   );
-  const mapped = rows.map(mapContract);
+  const mapped = rows.map(mapContractLedgerRow);
   const byId = new Map(mapped.map((row) => [Number(row.id), row]));
   const byNo = new Map(mapped.map((row) => [row.contract_no, row]));
   const ordered = [];

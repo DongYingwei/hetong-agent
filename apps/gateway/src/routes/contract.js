@@ -2,6 +2,7 @@ import Router from '@koa/router';
 import { Readable } from 'node:stream';
 import { queryRead } from '../config/db.js';
 import { config } from '../config/index.js';
+import { mapContractLedgerRow } from '../services/contractLedgerMapping.js';
 
 const router = new Router({ prefix: '/api/contract' });
 
@@ -25,16 +26,6 @@ const CONTRACT_COLUMNS = `contracts.id, contracts.contract_no, contracts.assessm
  *   · 正式入库与人工核对独立；verify_status 由 contract_manual_reviews 决定。
  *   · 合同状态直接使用审核台账原值；空值不再伪造为旧演示页的数字状态。
  */
-function mapContractRow(r) {
-  return {
-    ...r,
-    contract_status: r.status ?? '',
-    verify_status: Number(r.review_status || 0),
-    warning_status: r.expiry_warning ? 1 : 0,
-    has_ai_keyword: r.tag_ai ?? 0,
-  };
-}
-
 /** 读取合同模块命中，供台账动态列和详情页复用。查询库是唯一事实来源。 */
 async function attachModuleHits(rows) {
   if (rows.length === 0) return rows;
@@ -52,7 +43,7 @@ async function attachModuleHits(rows) {
     list.push(hit);
     byContract.set(hit.contract_id, list);
   }
-  return rows.map((row) => ({ ...mapContractRow(row), module_hits: byContract.get(row.id) || [] }));
+  return rows.map((row) => ({ ...mapContractLedgerRow(row), module_hits: byContract.get(row.id) || [] }));
 }
 
 /** 查询库中启用的合同模块；运营库旧 contract_section 不参与真实合同检索。 */
