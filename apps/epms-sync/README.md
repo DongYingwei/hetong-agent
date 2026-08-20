@@ -1,6 +1,6 @@
 # epms-sync — EPMS 订单增量同步
 
-从 EPMS 系统增量拉取订单附件，解析为 Markdown 并按订单编号分目录，再做 AI 关键词判定。
+从 EPMS 系统增量拉取订单附件，解析为 Markdown 并按订单编号分目录，再做 AI 关键词判定。当前定时任务只更新源文件、Markdown 和 AI 初筛结果，**不会自动回写订单台账数据库**。
 生产服务器每天凌晨 02:30 由 `jingxiaoguan-epms-sync.timer` 自动执行，用 checkpoint 记录已统计到的「审核日期」，避免全量重拉。本地可按需手动运行或使用遗留 cron 文件。
 
 ## 流程
@@ -18,6 +18,18 @@
 - `data/EPMS/` 订单 Excel + 附件（文件名 `{订单编号}-{序号}{ext}`）
 - `data/md-epms/` 每订单一个子目录的 md + `manifest.json` + `ai_keyword_results.json`
 - `data/epms-sync-state.json` 增量 checkpoint
+
+## 当前自动同步范围（重要）
+
+`run_daily.py` 的定时任务只完成“拉取 → 附件下载 → Markdown 解析 → AI 关键词初筛 → 推进 checkpoint”。它**不会**写入运营库 `contract_assistant.sys_order`、`order_module_hits` 或订单人工覆盖数据。
+
+因此，EPMS 有新订单或附件更新后，订单台账页面、综合检索和统计数据不会随定时任务自动变化；当前仍须在完成备份和人工确认后，手动执行订单台账导入及模块分析。
+
+`import_order_ledger.py` 是全量重导脚本，会重建订单主表及关联的模块结果，不能直接接入定时任务，否则可能覆盖人工编辑或关键词人工调整。后续自动化改造应改为增量 upsert，并满足：
+
+- 保留 `order_manual_overrides` 等人工维护数据；
+- 仅对新增或变更订单重新执行四模块分析；
+- 导入、模块分析均成功后才推进 checkpoint；任一步失败均保留原 checkpoint 并告警。
 
 ## 配置
 
@@ -39,7 +51,8 @@ cd apps/epms-sync
 python3 scripts/run_daily.py                                    # 读 checkpoint 增量
 python3 scripts/run_daily.py --review-from 2026-08-16 --review-to 2026-08-17  # 手动审核时间区间（不回写 checkpoint）
 
-# 全量订单台账导入（仅覆盖运营库 sys_order，不影响合同库 contracts）
+# 全量订单台账重导（人工确认后执行；会覆盖运营库 sys_order，不影响合同库 contracts）
+# 不要将此命令加入 run_daily.py 或 systemd timer。
 python3 scripts/import_order_ledger.py
 
 # 对全文命中 AI 的订单附件调用本地 Qwen，写入四模块 AI/— 标记

@@ -82,7 +82,7 @@
 - 当前已知发布目录：`/opt/jingxiaoguan/releases/20260819-35800d60`；切换和更新前先用 `readlink -f /opt/jingxiaoguan/current`、`git rev-parse --short HEAD` 确认真实状态。
 - 基础设施 Compose 仅管理 `postgres`、`milvus`、`minio`、`etcd`；**没有** `web` service。前端容器名为 `jingxiaoguan-web`，需用 `docker rm -f` + `docker run` 重建，不能执行 `docker compose up -d nginx/web`。
 - 后端服务由 systemd 管理：`jingxiaoguan-gateway`（3002）、`jingxiaoguan-parse`（8100）、`jingxiaoguan-query-agent`（8101）。
-- EPMS 自动同步采用 `jingxiaoguan-epms-sync.timer`，而非遗留 cron 文档；其环境变量 `MD_DIR` 必须是 `/data/jingxiaoguan/epms/md-epms`，不能是开发机路径。
+- EPMS 自动同步采用 `jingxiaoguan-epms-sync.timer`，而非遗留 cron 文档；其环境变量 `MD_DIR` 必须是 `/data/jingxiaoguan/epms/md-epms`，不能是开发机路径。该 timer 仅更新 EPMS 源文件、附件 Markdown 和 `ai_keyword_results.json`，**不会**自动写入 `contract_assistant.sys_order` 或 `order_module_hits`。
 
 服务健康检查：
 
@@ -110,6 +110,7 @@ curl -sS http://127.0.0.1:5174/api/health
 - 超长合同为避免超时固定只解析前 50 页；该限制同时作用于 MinerU Markdown、关键词索引和后续向量化。原始 PDF 仍完整保存、预览和下载，但第 51 页及之后暂不参与智能检索；恢复全文解析需另行处理。
 - 若 DeepSeek 抽取合同正文时返回 `Content Exists Risk`，解析服务会自动改用本地 `Qwen3-30B-A3B`（`192.168.101.214:6015`）重试一次；其他模型、网络或数据错误不会被掩盖。
 - 订单人工编辑直接更新 `sys_order`；订单关键词解析可按关键词管理的启用关键词修改，并即时重算订单 `tag_ai`。后续全量订单导入仍会以 Excel 覆盖订单数据，执行前应先备份。
+- [待开发] 将订单 Excel 导入、订单四模块分析接入 EPMS 自动同步，但必须使用增量 upsert 并保留人工编辑/关键词覆盖；不得沿用 `import_order_ledger.py` 的全量重建方式。仅在下载、解析、导入和模块分析全部成功后推进 checkpoint，失败时必须保留 checkpoint 并告警。
 - 前端 `npm run build` 已通过；Vite 的大 chunk 警告是性能优化建议，不阻塞发布。
 - 历史文档中出现的本地 `5433`、旧 cron、3,502 订单/179 AI、前端工程师交接分支等均为过期背景，不可作为当前运行参数。
 
