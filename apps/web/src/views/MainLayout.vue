@@ -169,9 +169,6 @@
     </aside>
 
     <!-- 主内容区 -->
-    <div class="fixed right-8 bottom-6 z-[60]">
-      <ContractParseProgress />
-    </div>
     <main class="ml-[264px] mr-3 my-3 flex-1 bg-white overflow-y-auto rounded-2xl shadow-sm border border-gray-100 p-6 min-h-[calc(100vh-24px)]">
       <router-view />
     </main>
@@ -203,7 +200,6 @@ import { ElMessage } from 'element-plus';
 import { useUserStore } from '../stores/userStore';
 import { useDictStore } from '../stores/dictStore';
 import { usePermissionStore } from '../stores/permissionStore';
-import ContractParseProgress from '../components/ContractParseProgress.vue';
 
 const route = useRoute();
 const router = useRouter();

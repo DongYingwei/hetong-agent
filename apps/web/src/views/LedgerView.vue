@@ -8,6 +8,7 @@
           <p class="text-xs text-gray-500 mt-1">管理全部合同台账及AI识别结果</p>
         </div>
         <div class="flex gap-2">
+          <ContractParseProgress />
           <el-button size="large" @click="showImportModal = true">
             <el-icon class="mr-1"><Upload /></el-icon> 导入合同
           </el-button>
@@ -292,6 +293,7 @@ import { fetchAllFilteredPages } from "../utils/paginatedExport";
 import type { ContractLedger } from "../types";
 import ImportContractModal from "../components/modals/ImportContractModal.vue";
 import ContractSummaryModal from "../components/modals/ContractSummaryModal.vue";
+import ContractParseProgress from "../components/ContractParseProgress.vue";
 
 const router = useRouter();
 const dictStore = useDictStore();
