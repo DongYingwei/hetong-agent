@@ -390,9 +390,9 @@ def create_app(conn_factory, deps: IngestDeps,
         conn = conn_factory()
         try:
             contract_id = confirm_draft(conn, draft_id, confirmed_by=confirmed_by, overrides=overrides)
-        except DraftNotFound as e:
+        except (DraftNotFound, ValueError) as e:
             conn.close()
-            raise HTTPException(status_code=404, detail=str(e))
+            raise HTTPException(status_code=404 if isinstance(e, DraftNotFound) else 400, detail=str(e))
         # 关键词扫描属于台账确定性规则，不依赖向量；正式入库后立即写命中明细。
         _rescan_contract(conn, contract_id)
         # 建向量（坑9：仅正式库）。读回正式库的 mineru_md 切片建向量。

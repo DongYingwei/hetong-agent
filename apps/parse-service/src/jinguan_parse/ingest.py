@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import hashlib
 import pathlib
+import re
 from dataclasses import dataclass
 from typing import Callable
 
@@ -23,6 +24,21 @@ from .clients import ExtractClient, MineruClient
 from .extract import ModuleConfig, extract_one_contract, extract_markdown
 from .keywords import KeywordMatcher
 from .persist import insert_draft
+
+
+_CONTRACT_NO_IN_FILENAME = re.compile(r"(?i)(?:HSKJ/C-)?[A-Z]{1,8}-\d{4,}(?:-[A-Z0-9]+)*")
+
+
+def default_contract_no(path: str) -> str:
+    """从文件名优先提取常见合同号；无法提取时生成不超过 Milvus 128 字符限制的稳定兜底值。"""
+    stem = pathlib.Path(path).stem
+    matched = _CONTRACT_NO_IN_FILENAME.search(stem)
+    if matched:
+        return matched.group(0)
+    if len(stem) <= 128:
+        return stem
+    digest = hashlib.sha256(stem.encode("utf-8")).hexdigest()[:12]
+    return f"{stem[:113]}-{digest}"
 
 
 def file_sha256(path: str, _chunk: int = 1 << 20) -> str:
@@ -88,7 +104,7 @@ def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = Fals
         if deps.contract_no_of is not None:
             contract_no = deps.contract_no_of(draft, path)
         else:
-            contract_no = pathlib.Path(path).stem  # 兜底：文件名（手工列后续核对时修正）
+            contract_no = default_contract_no(path)
         draft_id = insert_draft(conn, contract_no=contract_no, draft=draft, source_sha256=sha)
         return IngestResult(path, "ingested", draft_id=draft_id)
     except Exception as e:  # §8：单份失败不阻断整批
