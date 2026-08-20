@@ -112,7 +112,11 @@ class DeepSeekExtractClient:
 
     def __init__(self, settings: Settings, openai_client: object | None = None) -> None:
         self._model = settings.llm_model
-        base = openai_client or OpenAI(base_url=settings.llm_base_url, api_key=settings.llm_api_key)
+        base = openai_client or OpenAI(
+            base_url=settings.llm_base_url,
+            api_key=settings.llm_api_key,
+            timeout=settings.llm_timeout_s,
+        )
         # DeepSeek thinking-mode 模型不支持 tool_choice（函数调用）→ 用 JSON 模式（response_format）。
         self._client = instructor.from_openai(base, mode=instructor.Mode.JSON)
 

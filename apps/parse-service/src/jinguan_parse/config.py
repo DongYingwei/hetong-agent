@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-v4-flash"
     llm_api_key: str = ""
+    # 单次结构化抽取的网络/模型响应上限；超时应明确失败，不能无限占用上传任务。
+    llm_timeout_s: int = 180
     # DeepSeek 对合同正文触发 Content Exists Risk 时，使用本地 Qwen 作一次兜底。
     llm_fallback_base_url: str = "http://192.168.101.214:6015/v1"
     llm_fallback_model: str = "Qwen3-30B-A3B"
