@@ -169,7 +169,7 @@
     </aside>
 
     <!-- 主内容区 -->
-    <div class="fixed right-8 top-6 z-[60]">
+    <div class="fixed right-8 bottom-6 z-[60]">
       <ContractParseProgress />
     </div>
     <main class="ml-[264px] mr-3 my-3 flex-1 bg-white overflow-y-auto rounded-2xl shadow-sm border border-gray-100 p-6 min-h-[calc(100vh-24px)]">
