@@ -728,9 +728,9 @@ def build_default_app() -> FastAPI:
         mineru=HttpMineruClient(s),
         extractor=QualityFallbackExtractClient(
             DeepSeekExtractClient(s.model_copy(update={
-                "llm_base_url": s.llm_fallback_base_url,
-                "llm_model": s.llm_fallback_model,
-                "llm_api_key": s.llm_fallback_api_key,
+                "llm_base_url": s.llm_primary_base_url,
+                "llm_model": s.llm_primary_model,
+                "llm_api_key": s.llm_primary_api_key,
             }), max_retries=0),
             DeepSeekExtractClient(s),
         ),

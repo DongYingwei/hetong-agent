@@ -11,7 +11,7 @@ PDF_ROOT, MD_ROOT = ROOT / "data/pdf", ROOT / "data/md-pdf"
 LEDGER = ROOT / "demo/合同台账-V2.xlsx"
 OUT = MD_ROOT / "llm-ledger-comparison.csv"
 CACHE = MD_ROOT / "llm-contract-identities.json"
-BASE_URL, MODEL = "http://192.168.101.214:6015/v1", "Qwen3-30B-A3B"
+BASE_URL, MODEL = "http://192.168.121.32:6013/v1", "Qwen3.8-27B"
 
 def norm(v: object) -> str:
     raw = str(v or "").strip().lower()

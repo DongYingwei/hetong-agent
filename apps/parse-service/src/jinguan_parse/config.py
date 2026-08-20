@@ -23,16 +23,16 @@ class Settings(BaseSettings):
     mineru_server_url: str = ""  # vlm-http-client/hybrid-http-client 需要的 openai 兼容 VLM 服务地址
     mineru_timeout_s: int = 300
 
-    # LLM（DeepSeek，OpenAI 兼容）
+    # 云端 DeepSeek 兜底（OpenAI 兼容）。本地主模型抽取失败或关键字段不足时才调用。
     llm_base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-v4-flash"
     llm_api_key: str = ""
     # 单次结构化抽取的网络/模型响应上限；超时应明确失败，不能无限占用上传任务。
     llm_timeout_s: int = 180
-    # DeepSeek 对合同正文触发 Content Exists Risk 时，使用本地 Qwen 作一次兜底。
-    llm_fallback_base_url: str = "http://192.168.101.214:6015/v1"
-    llm_fallback_model: str = "Qwen3-30B-A3B"
-    llm_fallback_api_key: str = "EMPTY"
+    # 本地优先模型：同一份真实合同基准中，27B 比原 30B 抽取出更多关键字段。
+    llm_primary_base_url: str = "http://192.168.121.32:6013/v1"
+    llm_primary_model: str = "Qwen3.8-27B"
+    llm_primary_api_key: str = "EMPTY"
 
     # 向量端点（T04/T07 用）
     embed_base_url: str = "http://192.168.121.33:8008"

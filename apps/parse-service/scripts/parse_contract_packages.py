@@ -17,8 +17,8 @@ from jinguan_parse.taxonomy import load_matcher  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 MD_ROOT = ROOT / "data" / "md-pdf"
-QWEN_BASE = "http://192.168.101.214:6015/v1"
-QWEN_MODEL = "Qwen3-30B-A3B"
+QWEN_BASE = "http://192.168.121.32:6013/v1"
+QWEN_MODEL = "Qwen3.8-27B"
 
 def sha_text(text: str) -> str: return hashlib.sha256(text.encode()).hexdigest()
 def package_key(path: pathlib.Path) -> str:
