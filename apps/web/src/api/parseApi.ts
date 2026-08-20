@@ -69,10 +69,8 @@ export const parseApi = {
     });
   },
 
-  uploadPackage(formData: FormData, force = false, extractionPageLimit = 50): Promise<ApiResponse<ParseUploadResult>> {
-    const query = new URLSearchParams({ extraction_page_limit: String(extractionPageLimit) });
-    if (force) query.set('force', 'true');
-    return request.post(`/parse/upload-package?${query.toString()}`, formData, {
+  uploadPackage(formData: FormData, force = false): Promise<ApiResponse<ParseUploadResult>> {
+    return request.post(`/parse/upload-package${force ? '?force=true' : ''}`, formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
       timeout: 600000,
     });

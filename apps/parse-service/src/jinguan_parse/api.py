@@ -40,6 +40,7 @@ _DRAFT_FORM_COLS = [
 _ARCHIVE_ALLOWED_SUFFIXES = {".pdf", ".doc", ".docx"}
 _ARCHIVE_MAX_FILES = 200
 _ARCHIVE_MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GiB，防 ZIP 炸弹
+_CONTRACT_PARSE_PAGE_LIMIT = 50
 
 
 def _extract_contract_zip(content: bytes, archive_name: str) -> list[tuple[str, bytes]]:
@@ -92,8 +93,8 @@ def create_app(conn_factory, deps: IngestDeps,
         return {"status": "ok"}
 
     @app.post("/parse")
-    async def parse(file: UploadFile = File(...), force: bool = False, extraction_page_limit: int = 50):
-        extraction_page_limit = min(max(extraction_page_limit, 1), 200)
+    async def parse(file: UploadFile = File(...), force: bool = False):
+        extraction_page_limit = _CONTRACT_PARSE_PAGE_LIMIT
         if not file.filename or not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="仅接受 PDF 文件")
         # 上传文件先落持久原件目录，再复用或生成与批量导入完全相同的 md-pdf 缓存。
@@ -158,11 +159,11 @@ def create_app(conn_factory, deps: IngestDeps,
         return payload
 
     @app.post("/parse-package")
-    async def parse_package(files: list[UploadFile] = File(...), force: bool = False, extraction_page_limit: int = 50):
+    async def parse_package(files: list[UploadFile] = File(...), force: bool = False):
         """一个合同包可包含多个原件：合并 PDF 正文只生成一个草稿，Word 仅作为附件留存。"""
         if not files:
             raise HTTPException(status_code=400, detail="未接收到合同文件")
-        extraction_page_limit = min(max(extraction_page_limit, 1), 200)
+        extraction_page_limit = _CONTRACT_PARSE_PAGE_LIMIT
         package_key = f"upload-package:{uuid.uuid4().hex}"
         sources: list[dict] = []
         pdfs: list[tuple[Path, str, str]] = []
@@ -569,7 +570,7 @@ def create_app(conn_factory, deps: IngestDeps,
         return {"contract_id": contract_id, "deleted": True}
 
     @app.post("/sync/{contract_id}/source")
-    async def sync_source(contract_id: int, file: UploadFile = File(...), extraction_page_limit: int = 50):
+    async def sync_source(contract_id: int, file: UploadFile = File(...)):
         """原文重传：比 MD5 决定是否重建向量（切片3）。"""
         if embedder is None or store is None:
             raise HTTPException(status_code=503, detail="向量端点未配置，无法同步")
@@ -579,7 +580,7 @@ def create_app(conn_factory, deps: IngestDeps,
             pdf_path, relative_path, sha = persist_pdf_upload(
                 await file.read(), file.filename, source_root,
             )
-            extraction_page_limit = min(max(extraction_page_limit, 1), 200)
+            extraction_page_limit = _CONTRACT_PARSE_PAGE_LIMIT
             with first_pages_for_parse(pdf_path, extraction_page_limit) as parse_pdf:
                 _, markdown_path = convert_pdf(
                     parse_pdf.path, md_root, deps.mineru, source_root=source_root,

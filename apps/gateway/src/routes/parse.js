@@ -20,10 +20,7 @@ function withTimeout(ms) {
   return { signal: controller.signal, clear: () => clearTimeout(timer) };
 }
 
-function extractionPageLimit(value) {
-  const parsed = Number.parseInt(String(value || '50'), 10);
-  return Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 200) : 50;
-}
+const CONTRACT_PARSE_PAGE_LIMIT = 50;
 
 // ① 上传 PDF → 解析入草稿
 router.post('/upload', async (ctx) => {
@@ -42,10 +39,9 @@ router.post('/upload', async (ctx) => {
   form.append('file', new Blob([buf], { type: 'application/pdf' }), originalName);
 
   const force = ctx.query.force === 'true' || ctx.query.force === '1';
-  const pageLimit = extractionPageLimit(ctx.query.extraction_page_limit);
   const { signal, clear } = withTimeout(config.parse.timeoutMs);
   try {
-    const resp = await fetch(`${config.parse.url}/parse?force=${force}&extraction_page_limit=${pageLimit}`, { method: 'POST', body: form, signal });
+    const resp = await fetch(`${config.parse.url}/parse?force=${force}&extraction_page_limit=${CONTRACT_PARSE_PAGE_LIMIT}`, { method: 'POST', body: form, signal });
     clear();
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
@@ -78,10 +74,9 @@ router.post('/upload-package', async (ctx) => {
       form.append('files', new Blob([buf], { type: contentType }), originalName);
     }
     const force = ctx.query.force === 'true' || ctx.query.force === '1';
-    const pageLimit = extractionPageLimit(ctx.query.extraction_page_limit);
     const { signal, clear } = withTimeout(config.parse.timeoutMs);
     try {
-      const resp = await fetch(`${config.parse.url}/parse-package?force=${force}&extraction_page_limit=${pageLimit}`, { method: 'POST', body: form, signal });
+      const resp = await fetch(`${config.parse.url}/parse-package?force=${force}&extraction_page_limit=${CONTRACT_PARSE_PAGE_LIMIT}`, { method: 'POST', body: form, signal });
       clear();
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok) return ctx.fail(data.detail?.error || `合同包解析失败(${resp.status})`, 502);
