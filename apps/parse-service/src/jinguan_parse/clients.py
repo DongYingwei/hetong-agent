@@ -110,8 +110,15 @@ _EXTRACT_SYSTEM = (
 class DeepSeekExtractClient:
     """真实 DeepSeek 抽取（OpenAI 兼容端点 + instructor 结构化）。"""
 
-    def __init__(self, settings: Settings, openai_client: object | None = None) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        openai_client: object | None = None,
+        *,
+        max_retries: int = 2,
+    ) -> None:
         self._model = settings.llm_model
+        self._max_retries = max_retries
         base = openai_client or OpenAI(
             base_url=settings.llm_base_url,
             api_key=settings.llm_api_key,
@@ -124,7 +131,7 @@ class DeepSeekExtractClient:
         return self._client.chat.completions.create(
             model=self._model,
             response_model=ContractExtraction,
-            max_retries=2,  # instructor 自动重试直到满足 schema
+            max_retries=self._max_retries,
             messages=[
                 {"role": "system", "content": _EXTRACT_SYSTEM},
                 {"role": "user", "content": markdown},
