@@ -270,7 +270,17 @@ async function startParsing() {
     selectedFiles.value.forEach((file) => formData.append('files', file));
     currentParsingHint.value = `正在解析 ${selectedFiles.value.length} 个合同附件（MinerU + LLM，大文件可能数分钟）...`;
     const res = await parseApi.uploadPackage(formData);
-    if (res.code !== 200 || !res.data?.draft_id) throw new Error(res.msg || '合同包解析未产生草稿');
+    if (res.code !== 200) throw new Error(res.msg || '合同包解析失败');
+    // 重复上传已核对合同不会生成草稿；这不是解析失败，应明确告知用户。
+    if (!res.data?.draft_id) {
+      if (res.data?.contract_id) {
+        ElMessage.info('该合同已存在且已核对，无需重复导入');
+        visible.value = false;
+        emit('success');
+        return;
+      }
+      throw new Error(res.msg || '合同包未生成可核对草稿');
+    }
     const f = (res.data.draft?.form ?? {}) as DraftForm;
     parsedResults.value = [{
       draft_id: res.data.draft_id,
@@ -280,7 +290,9 @@ async function startParsing() {
     }];
     progressPercent.value = 100;
     phase.value = 'done';
-    ElMessage.success('合同包解析完成，已生成一份草稿待人工核对');
+    ElMessage.success(res.data.status === 'skipped_duplicate'
+      ? '合同附件已存在，已打开原草稿待核对'
+      : '合同包解析完成，已生成一份草稿待人工核对');
   } catch (err: any) {
     ElMessage.error(`解析失败：${err?.response?.data?.msg || err?.message || '未知错误'}`);
     phase.value = 'upload';

@@ -200,6 +200,32 @@ def create_app(conn_factory, deps: IngestDeps,
                 sources.append(source)
             if not pdfs:
                 raise HTTPException(status_code=400, detail="合同包至少需要一份 PDF 用于解析")
+
+            # 合同包重复上传时，不能让 ingest_one 返回没有 draft_id 的
+            # skipped_duplicate；前端需要能直接打开原来的草稿/正式合同。
+            # 以合同包第一份 PDF 作为主原件，和 _register_uploaded_package 的主原件规则一致。
+            primary_sha = pdfs[0][2]
+            conn = conn_factory()
+            try:
+                duplicate = _existing_source(conn, primary_sha)
+            finally:
+                conn.close()
+            if duplicate and (not force or duplicate["contract_id"] is not None):
+                payload = {
+                    "path": ", ".join(Path(source["relative_path"]).name for source in sources),
+                    "status": "skipped_duplicate",
+                    "draft_id": duplicate["draft_id"],
+                    "contract_id": duplicate["contract_id"],
+                    "error": None,
+                }
+                if duplicate["draft_id"] is not None:
+                    conn = conn_factory()
+                    try:
+                        payload["draft"] = _read_draft(conn, duplicate["draft_id"])
+                    finally:
+                        conn.close()
+                return payload
+
             merged_markdown = "\n\n".join(
                 f"# 附件：{Path(source['relative_path']).name}\n\n{source['markdown']}"
                 for source in sources if source["markdown"]

@@ -41,6 +41,7 @@ export interface ParseUploadResult {
   path: string;
   status: 'ingested' | 'skipped_duplicate' | 'failed';
   draft_id: number | null;
+  contract_id?: number | null;
   draft?: DraftData;
 }
 
