@@ -26,7 +26,7 @@ from .vector import (
     vectorize_chunks, vectorize_confirmed_contract, markdown_to_segments,
     QwenEmbeddingClient, MilvusVectorStore, EMBED_DIM, COLLECTION,
 )
-from .clients import ContentRiskFallbackExtractClient
+from .clients import QualityFallbackExtractClient
 
 __all__ = [
     "Chunk",
@@ -61,5 +61,5 @@ __all__ = [
     "MilvusVectorStore",
     "EMBED_DIM",
     "COLLECTION",
-    "ContentRiskFallbackExtractClient",
+    "QualityFallbackExtractClient",
 ]

@@ -16,7 +16,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
 
 from .config import load_settings
-from .clients import HttpMineruClient, DeepSeekExtractClient, ContentRiskFallbackExtractClient
+from .clients import HttpMineruClient, DeepSeekExtractClient, QualityFallbackExtractClient
 from .ingest import IngestDeps, ingest_one
 from .extract import ModuleConfig
 from .keywords import KeywordMatcher
@@ -723,15 +723,16 @@ def build_default_app() -> FastAPI:
     from .vector import QwenEmbeddingClient, MilvusVectorStore
 
     s = load_settings(".env")
+    # 默认本地 Qwen：失败、超时、结构化结果无效，或六项关键字段中少于两项时，才切换 DeepSeek。
     deps = IngestDeps(
         mineru=HttpMineruClient(s),
-        extractor=ContentRiskFallbackExtractClient(
-            DeepSeekExtractClient(s),
+        extractor=QualityFallbackExtractClient(
             DeepSeekExtractClient(s.model_copy(update={
                 "llm_base_url": s.llm_fallback_base_url,
                 "llm_model": s.llm_fallback_model,
                 "llm_api_key": s.llm_fallback_api_key,
             }), max_retries=0),
+            DeepSeekExtractClient(s),
         ),
         modules=_load_modules_from_db(s.pg_url),
         matcher=_load_matcher(s),  # §6.2 台账「AI业绩关键词」词表

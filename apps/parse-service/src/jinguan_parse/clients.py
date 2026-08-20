@@ -139,17 +139,29 @@ class DeepSeekExtractClient:
         )
 
 
-class ContentRiskFallbackExtractClient:
-    """仅在云端内容风控拒绝时切换本地模型，其他故障保持可见。"""
+class QualityFallbackExtractClient:
+    """优先使用本地模型；失败或关键字段不足时改用云端模型重抽取。"""
 
-    def __init__(self, primary: ExtractClient, fallback: ExtractClient) -> None:
+    _CORE_FIELDS = (
+        "customer_contract_no", "customer_name", "contract_name",
+        "contract_type", "amount", "sign_date",
+    )
+
+    def __init__(self, primary: ExtractClient, fallback: ExtractClient, *, min_core_fields: int = 2) -> None:
         self._primary = primary
         self._fallback = fallback
+        self._min_core_fields = min_core_fields
+
+    def _has_enough_core_fields(self, result: ContractExtraction) -> bool:
+        fields = result.flat_ai_fields()
+        present = sum(bool(str(fields.get(field) or "").strip()) for field in self._CORE_FIELDS)
+        return present >= self._min_core_fields
 
     def extract(self, markdown: str) -> ContractExtraction:
         try:
-            return self._primary.extract(markdown)
-        except Exception as exc:
-            if "Content Exists Risk" not in str(exc):
-                raise
+            result = self._primary.extract(markdown)
+        except Exception:
             return self._fallback.extract(markdown)
+        if not self._has_enough_core_fields(result):
+            return self._fallback.extract(markdown)
+        return result
