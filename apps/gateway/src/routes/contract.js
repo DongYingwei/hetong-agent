@@ -46,21 +46,24 @@ async function attachModuleHits(rows) {
   return rows.map((row) => ({ ...mapContractLedgerRow(row), module_hits: byContract.get(row.id) || [] }));
 }
 
-/** 尚未形成正式合同的上传任务，也要在台账最前端可见，防止用户误以为上传丢失。 */
-async function listPendingParseJobs() {
+/**
+ * 未核对合同在台账中展示其持久任务状态；它们不属于 contracts 查询集合，
+ * 因而不会进入综合检索、金额统计或导出。
+ */
+async function listUnconfirmedParseJobs() {
   const rows = await queryRead(`SELECT j.id,j.status,j.progress,j.current_file,j.error_message,j.draft_id,j.created_at
     FROM contract_parse_jobs j
-    WHERE j.status IN ('queued','running','failed')
+    WHERE j.status IN ('queued','running','succeeded','failed')
     ORDER BY j.created_at DESC`);
   return rows.map((job) => ({
     id: -Number(job.id),
     parse_job_id: Number(job.id),
     draft_id: job.draft_id,
-    contract_no: job.current_file || `解析任务 #${job.id}`,
+    contract_no: job.current_file || '待填写',
     customer_name: '—', contract_name: job.current_file || '合同解析任务', contract_type: '',
     sign_date: null, amount: null, assessment_line: '—', status: '—',
     expiry_warning: 0, tag_ai: 0, confirmed: 0,
-    review_status: job.status === 'failed' ? 2 : 3,
+    review_status: job.status === 'failed' ? 2 : job.status === 'succeeded' ? 0 : 3,
     parse_status: job.status, parse_progress: job.progress, parse_error: job.error_message,
   }));
 }
@@ -82,7 +85,8 @@ router.get('/modules', async (ctx) => {
 router.get('/list', async (ctx) => {
   const page = parseInt(ctx.query.page || '1', 10);
   const pageSize = parseInt(ctx.query.pageSize || '10', 10);
-  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType, moduleFilters = '' } = ctx.query;
+  const { keyword, hasAiKeyword, moduleKey, moduleKeyword, verifyStatus, contractStatus, contractType,
+    moduleFilters = '', includeParseJobs = '' } = ctx.query;
 
   const offset = (page - 1) * pageSize;
   let whereSql = 'WHERE 1=1';
@@ -157,9 +161,9 @@ router.get('/list', async (ctx) => {
   const countResult = await queryRead(`SELECT COUNT(*) AS total ${fromSql} ${whereSql}`, params);
   let total = parseInt(countResult[0].total, 10);
   // 解析任务没有正式合同字段；无筛选时按最新优先混入台账，并修正后续分页偏移。
-  const showPending = !keyword && !hasAiKeyword && !moduleKey && !moduleKeyword && !verifyStatus
+  const showPending = includeParseJobs === '1' && !keyword && !hasAiKeyword && !moduleKey && !moduleKeyword && !verifyStatus
     && !contractStatus && !contractType && !requestedModuleKeys.length;
-  const pending = showPending ? await listPendingParseJobs() : [];
+  const pending = showPending ? await listUnconfirmedParseJobs() : [];
   const globalOffset = (page - 1) * pageSize;
   const pendingOnPage = pending.slice(globalOffset, globalOffset + pageSize);
   const officialOffset = Math.max(0, globalOffset - pending.length);

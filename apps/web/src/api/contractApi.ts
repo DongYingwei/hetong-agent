@@ -15,6 +15,8 @@ export const contractApi = {
     verifyStatus?: number | string;
     moduleKey?: string;
     moduleKeyword?: string;
+    /** 仅合同台账界面显示持久化解析任务；统计、导出与综合检索必须排除。 */
+    includeParseJobs?: number | string;
     /** JSON: [{ module_key, keywords }], 配置驱动的模块筛选（各模块之间取 AND）。 */
     moduleFilters?: string;
   }): Promise<ApiResponse<PageResult<ContractLedger>>> {

@@ -42,7 +42,8 @@ export interface ContractLedger {
   warning_status?: number;
   /** 未完成解析任务在台账首屏使用负 id 占位，不可编辑。 */
   parse_job_id?: number;
-  parse_status?: 'queued' | 'running' | 'failed';
+  draft_id?: number | null;
+  parse_status?: 'queued' | 'running' | 'succeeded' | 'failed';
   parse_progress?: number;
   parse_error?: string | null;
   create_time?: string;

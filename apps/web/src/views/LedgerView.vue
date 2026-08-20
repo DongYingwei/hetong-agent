@@ -367,6 +367,7 @@ async function loadData() {
       hasAiKeyword: filters.hasAiKeyword,
       verifyStatus: filters.verifyStatus,
       moduleFilters: buildModuleFilters(moduleFilters, keywordTerms),
+      includeParseJobs: 1,
     });
     if (res.code === 200) {
       tableData.value = res.data.list;
@@ -413,6 +414,10 @@ function goToCompare(id: number) {
 
 function handleVerifyClick(row: ContractLedger) {
   if (row.parse_job_id) {
+    if (row.parse_status === 'succeeded' && row.draft_id) {
+      router.push({ path: '/verify', query: { draftId: String(row.draft_id) } });
+      return;
+    }
     ElMessage.info(row.verify_status === 2 ? '解析失败，请在右上角“解析任务”使用 DeepSeek 重试' : '合同解析中，暂不能核对或编辑');
     return;
   }
@@ -433,6 +438,10 @@ function viewOriginal(row: ContractLedger) {
 
 function handleActionClick(row: ContractLedger) {
   if (row.parse_job_id) {
+    if (row.parse_status === 'succeeded' && row.draft_id) {
+      router.push({ path: '/verify', query: { draftId: String(row.draft_id) } });
+      return;
+    }
     ElMessage.info(row.verify_status === 2 ? '解析失败，请在右上角“解析任务”使用 DeepSeek 重试' : '合同解析中，暂不能编辑');
     return;
   }
