@@ -12,6 +12,8 @@ import subprocess
 import sys
 import time
 import uuid
+import io
+import zipfile
 
 import pytest
 
@@ -23,6 +25,7 @@ _PACKAGES_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "003_contra
 _KEYWORD_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "004_configurable_keyword_hits.sql"
 _FULLTEXT_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "005_fulltext_keyword_index.sql"
 _MODULE_SCOPE_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "006_manual_review_and_module_scope.sql"
+_ASYNC_PARSE_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "007_async_contract_parse_jobs.sql"
 _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -73,6 +76,7 @@ def pg():
             cur.execute(_KEYWORD_DDL.read_text(encoding="utf-8"))
             cur.execute(_FULLTEXT_DDL.read_text(encoding="utf-8"))
             cur.execute(_MODULE_SCOPE_DDL.read_text(encoding="utf-8"))
+            cur.execute(_ASYNC_PARSE_DDL.read_text(encoding="utf-8"))
         conn.commit()
         yield conn, dsn
         conn.close()
@@ -187,3 +191,56 @@ def test_http_parse_endpoint(pg, tmp_path):
         assert source.startswith("uploads/") and markdown.startswith("uploads/")
     finally:
         conn.close()
+
+
+def test_async_upload_treats_each_zip_top_level_directory_as_one_contract(pg, tmp_path):
+    """公开上传接口：ZIP 中两个顶层目录必须创建两个独立、可恢复的解析任务。"""
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    from jinguan_parse.api import create_app
+    _, dsn = pg
+    app = create_app(
+        lambda: psycopg.connect(dsn), _deps(),
+        pdf_root=tmp_path / "pdf", markdown_root=tmp_path / "md-pdf",
+    )
+    client = fastapi_testclient.TestClient(app)
+
+    import pymupdf
+    doc = pymupdf.open(); doc.new_page(); valid_pdf = doc.tobytes(); doc.close()
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w") as z:
+        z.writestr("合同甲/主合同.pdf", valid_pdf)
+        z.writestr("合同乙/主合同.pdf", valid_pdf + b"\n% distinct")
+
+    response = client.post("/jobs/upload", files={"files": ("合同包.zip", archive.getvalue(), "application/zip")})
+    assert response.status_code == 200
+    jobs = response.json()["jobs"]
+    assert [job["name"] for job in jobs] == ["合同甲", "合同乙"]
+    assert all(job["id"] for job in jobs)
+
+    listed = client.get("/jobs").json()["list"]
+    assert {job["id"] for job in listed} >= {job["id"] for job in jobs}
+
+
+def test_failed_async_job_can_only_be_requeued_with_deepseek(pg, tmp_path):
+    """公开重试接口：失败任务重试后必须切换 DeepSeek，而不是再次使用默认模型。"""
+    fastapi_testclient = pytest.importorskip("fastapi.testclient")
+    from jinguan_parse.api import create_app
+    conn, dsn = pg
+    with conn.cursor() as cur:
+        cur.execute("""INSERT INTO contract_packages(package_key, status)
+                       VALUES (%s, 'failed') RETURNING id""", (f"failed-job-{uuid.uuid4()}",))
+        package_id = cur.fetchone()[0]
+        cur.execute("""INSERT INTO contract_parse_jobs(package_id,status,error_message)
+                       VALUES (%s,'failed','结构化输出无效') RETURNING id""", (package_id,))
+        job_id = cur.fetchone()[0]
+    conn.commit()
+    app = create_app(lambda: psycopg.connect(dsn), _deps(), pdf_root=tmp_path / "pdf", markdown_root=tmp_path / "md-pdf")
+    client = fastapi_testclient.TestClient(app)
+
+    response = client.post(f"/jobs/{job_id}/retry")
+    assert response.status_code == 200
+    assert response.json() == {"id": job_id, "status": "queued", "extractor_provider": "deepseek"}
+
+    job = next(item for item in client.get("/jobs").json()["list"] if item["id"] == job_id)
+    assert job["status"] == "queued"
+    assert job["extractor_provider"] == "deepseek"
