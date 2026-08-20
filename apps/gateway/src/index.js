@@ -41,6 +41,8 @@ app.use(
     formidable: {
       // 合同包中的单个原件最大 500MB；合同包数量和业务归属由 /parse/package 校验。
       maxFileSize: 500 * 1024 * 1024,
+      // Formidable 默认总上传量仅 100MB；合同包上传必须显式与单文件上限对齐。
+      maxTotalFileSize: 500 * 1024 * 1024,
       keepExtensions: true,
     },
   })
