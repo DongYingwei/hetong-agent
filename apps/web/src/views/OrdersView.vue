@@ -344,11 +344,37 @@ function formatTaxRate(value: unknown): string {
 }
 
 async function handleExport() {
-  if (!tableData.value || tableData.value.length === 0) {
-    ElMessage.warning("当前暂无订单数据可导出");
-    return;
+  loading.value = true;
+  try {
+    const rows: OrderLedger[] = [];
+    const exportPageSize = 200;
+    const activeFilters = buildModuleFilters(moduleFilters, keywordTerms);
+    let exportPage = 1;
+    let expectedTotal = 0;
+
+    do {
+      const res = await orderApi.getList({
+        page: exportPage,
+        pageSize: exportPageSize,
+        keyword: filters.keyword,
+        moduleFilters: activeFilters,
+      });
+      if (res.code !== 200) throw new Error(res.msg || "读取订单导出数据失败");
+      rows.push(...res.data.list);
+      expectedTotal = res.data.total;
+      exportPage += 1;
+    } while (rows.length < expectedTotal);
+
+    if (!rows.length) {
+      ElMessage.warning("当前筛选条件下暂无订单数据可导出");
+      return;
+    }
+    await exportFullOrderLedgerExcel(rows, "订单台账全量明细");
+    ElMessage.success(`🎉 已导出 ${rows.length} 条订单台账数据！`);
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : "订单台账导出失败");
+  } finally {
+    loading.value = false;
   }
-  await exportFullOrderLedgerExcel(tableData.value, "订单台账全量明细");
-  ElMessage.success("🎉 订单台账 Excel 已成功生成并开始下载！");
 }
 </script>

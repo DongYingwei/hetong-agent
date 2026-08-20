@@ -411,6 +411,8 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
     { title: '服务内容', width: 20 }, // Yellow AI
     { title: '技术要求', width: 20 }, // Yellow AI
     { title: '人员要求', width: 20 }, // Yellow AI
+    { title: '是否包含AI关键词', width: 18 },
+    { title: '命中AI关键词', width: 34 },
   ];
 
   // 列宽设置
@@ -442,7 +444,7 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
   ws.mergeCells('B1:I1');
   ws.mergeCells('K1:BL1');
   ws.mergeCells('BM1:BN1');
-  ws.mergeCells('BP1:BS1');
+  ws.mergeCells('BP1:BU1');
 
   // 样式设置 Row 1
   const cellA1 = ws.getCell('A1');
@@ -475,7 +477,7 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
   const row2Values = [''];
   for (let i = 0; i < headers.length; i++) {
     const colIdx = i + 2;
-    if (colIdx >= 65 && colIdx <= 70) {
+    if (colIdx >= 65 && colIdx <= 72) {
       row2Values.push('AI');
     } else {
       row2Values.push('EPMS');
@@ -491,7 +493,7 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
     cell.font = { name: '微软雅黑', size: 9, bold: true };
     cell.alignment = { vertical: 'middle', horizontal: 'center' };
 
-    if (colIdx >= 65 && colIdx <= 70) {
+    if (colIdx >= 65 && colIdx <= 72) {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEE00' } };
     } else {
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFFFF' } };
@@ -524,78 +526,43 @@ export async function exportFullOrderLedgerExcel(dataList: ExportOrderRow[], fil
   dataList.forEach((item) => {
     const orderModuleHit = (key: string) => Array.isArray((item as any).module_hits)
       && (item as any).module_hits.some((x: any) => x.module_key === key && x.hit === 1) ? 'AI' : '—';
+    const matchedKeywords = (() => {
+      const direct = Array.isArray((item as any).ai_keywords) ? (item as any).ai_keywords : [];
+      const moduleTerms = Array.isArray((item as any).module_hits)
+        ? (item as any).module_hits.flatMap((x: any) => String(x.keywords || '').split(/[,，、]/))
+        : [];
+      const values = [...new Set([...direct, ...moduleTerms].map((x) => String(x).trim()).filter(Boolean))];
+      return values.join('、') || '—';
+    })();
     const rowVal = [
       '样本',
-      item.project_no || '—',
-      item.project_name || '—',
-      item.detail_project_no || '—',
-      item.order_no || item.no || '—',
-      item.customer_order_no || '—',
-      item.order_name || item.name || '—',
-      item.contract_no || '—',
-      item.customer_name || item.customer || '—',
-      item.assessment_line || '软件',
-      item.customer_line || '软件',
-      item.customer_type || '无',
-      item.settlement_type || '—',
-      item.order_type || 'ARP',
-      item.order_attr || 'JS',
-      item.salesperson || '—',
-      item.customer_contract_no || '—',
-      item.customer_service_target || '—',
-      item.customer_pm || '—',
-      item.customer_order_name || '—',
-      item.created_date || '2026-07-23',
-      item.accepted_date || '2026-07-23',
-      item.start_date || '2026-04-01',
-      item.end_date || '2026-06-30',
-      item.est_invoice_date || '2026-12-27',
-      item.order_status || '执行中',
-      item.tax_rate ?? 6,
-      item.amount ?? 0,
-      item.amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
-      item.detail_order_no || (item.order_no ? item.order_no + '-1' : '—'),
-      item.customer_detail_order_no || '—',
-      item.redemption_days ?? 0,
-      item.is_last_order || '否',
-      item.tax_rate ?? 6,
-      item.amount ?? 0,
-      item.detail_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
-      item.deduct_amount ?? 0,
-      item.deduct_amount_ex_tax ?? 0,
-      item.stop_invoice_amount ?? 0,
-      item.stop_invoice_amount_ex_tax ?? 0,
-      item.confirmed_income_amount ?? 0,
-      item.confirmed_income_amount_ex_tax ?? 0,
-      item.unconfirmed_income_amount ?? (item.amount ?? 0),
-      item.unconfirmed_income_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
-      item.invoiced_amount ?? (item.amount ?? 0),
-      item.invoiced_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
-      item.returned_amount ?? 0,
-      item.returned_amount_ex_tax ?? 0,
-      item.invoiced_unreturned_amount ?? (item.amount ?? 0),
-      item.invoiced_unreturned_amount_ex_tax ?? (typeof item.amount === 'number' ? item.amount * 0.94 : 0),
-      item.region || '—',
-      item.province || '—',
-      item.city || '—',
-      item.delivery_list || '—',
-      item.income_confirmed === 1 ? '已确认' : '未确认',
-      item.maker || '陈心瑜B',
-      item.make_time || '2026-07-23 14:55:38',
-      item.detail_maker || '陈心瑜B',
-      item.detail_make_time || '2026-07-23 14:55:38',
-      item.updater || '陈心瑜B',
-      item.update_time || '2026-07-23 14:56:08',
-      item.auditor || '陈心瑜B',
-      item.audit_time || '2026-07-23 14:56:08',
-      item.has_attachment || '有',
-      item.latest_attachment_time || '2026-07-23 14:56:03',
-      item.attachment_count ?? 3,
-      item.has_eml || '是',
+      item.project_no ?? '—', item.project_name ?? '—', item.detail_project_no ?? '—',
+      item.order_no ?? item.no ?? '—', item.customer_order_no ?? '—', item.order_name ?? item.name ?? '—',
+      item.contract_no ?? '—', item.customer_name ?? (item as any).customer ?? '—', item.assessment_line ?? '—',
+      item.customer_line ?? '—', item.customer_type ?? '—', item.settlement_type ?? '—', item.order_type ?? '—',
+      item.order_attr ?? '—', item.salesperson ?? '—', item.customer_contract_no ?? '—',
+      item.customer_service_target ?? '—', item.customer_pm ?? '—', item.customer_order_name ?? '—',
+      item.created_date ?? '—', item.accepted_date ?? '—', item.start_date ?? '—', item.end_date ?? '—',
+      item.est_invoice_date ?? '—', item.order_status ?? '—', item.tax_rate ?? '—', item.amount ?? '—',
+      item.amount_ex_tax ?? '—', item.detail_order_no ?? '—', item.customer_detail_order_no ?? '—',
+      item.redemption_days ?? '—', item.is_last_order ?? '—', item.detail_tax_rate ?? item.tax_rate ?? '—',
+      item.detail_amount ?? item.amount ?? '—', item.detail_amount_ex_tax ?? '—', item.deduct_amount ?? '—',
+      item.deduct_amount_ex_tax ?? '—', item.stop_invoice_amount ?? '—', item.stop_invoice_amount_ex_tax ?? '—',
+      item.confirmed_income_amount ?? '—', item.confirmed_income_amount_ex_tax ?? '—',
+      item.unconfirmed_income_amount ?? '—', item.unconfirmed_income_amount_ex_tax ?? '—', item.invoiced_amount ?? '—',
+      item.invoiced_amount_ex_tax ?? '—', item.returned_amount ?? '—', item.returned_amount_ex_tax ?? '—',
+      item.invoiced_unreturned_amount ?? '—', item.invoiced_unreturned_amount_ex_tax ?? '—', item.region ?? '—',
+      item.province ?? '—', item.city ?? '—', item.delivery_list ?? '—',
+      item.income_confirmed == null ? '—' : Number(item.income_confirmed) === 1 ? '已确认' : '未确认',
+      item.maker ?? '—', item.make_time ?? '—', item.detail_maker ?? '—', item.detail_make_time ?? '—',
+      item.updater ?? '—', item.update_time ?? '—', item.auditor ?? '—', item.audit_time ?? '—',
+      item.has_attachment ?? '—', item.latest_attachment_time ?? '—', item.attachment_count ?? '—', item.has_eml ?? '—',
       item.job_description || orderModuleHit('role'),
       item.service_content || orderModuleHit('service'),
       item.tech_requirements || orderModuleHit('tech'),
       item.personnel_requirements || orderModuleHit('staff'),
+      Number((item as any).tag_ai ?? (item as any).has_ai_keyword) === 1 ? '是' : '否',
+      matchedKeywords,
     ];
 
     const dataRow = ws.addRow(rowVal);

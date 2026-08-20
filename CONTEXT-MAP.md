@@ -17,5 +17,5 @@ CoreMind 是声明式 Agent 框架（`packages/coremind-*`）；`apps/query-agen
 ## Relationships
 
 - **⑤ 解析 → ④ 共享库 → ③ 查询智能体**：解析把合同 ETL 入正式库 `contracts`（经人工核对）+ 建 Milvus 向量；查询智能体**只读**消费。三者仅通过**共享 PostgreSQL + Milvus** 耦合，无直接调用。
-- **① 前端 → ② 网关 → ③ 查询智能体**：前端所有请求经网关（`:3001`）；网关处理运营 CRUD（走运营库），仅 `/agent/chat` 无状态转发到查询智能体。
+- **① 前端 → ② 网关 → ③ 查询智能体**：前端所有请求经同源 `/api` 到网关（`:3002`）；网关处理运营 CRUD（走运营库），仅 `/agent/chat` 转发到查询智能体并保存会话上下文。
 - **两库分离**：④ 查询库 `packages/contracts-db`（只读消费）与 ② 运营库 `contract_assistant`（网关 CRUD）是**不同的库**，勿混。
