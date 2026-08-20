@@ -93,7 +93,8 @@ def create_app(conn_factory, deps: IngestDeps,
         return {"status": "ok"}
 
     @app.post("/parse")
-    async def parse(file: UploadFile = File(...), force: bool = False):
+    def parse(file: UploadFile = File(...), force: bool = False):
+        """在线程池执行耗时解析，不能阻塞健康检查和关键词管理。"""
         extraction_page_limit = _CONTRACT_PARSE_PAGE_LIMIT
         if not file.filename or not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="仅接受 PDF 文件")
@@ -101,7 +102,7 @@ def create_app(conn_factory, deps: IngestDeps,
         # 不能以临时文件作为唯一来源，否则核对完成后无法预览、下载和追溯。
         try:
             pdf_path, relative_path, sha = persist_pdf_upload(
-                await file.read(), file.filename, source_root,
+                file.file.read(), file.filename, source_root,
             )
             conn = conn_factory()
             try:
@@ -159,8 +160,8 @@ def create_app(conn_factory, deps: IngestDeps,
         return payload
 
     @app.post("/parse-package")
-    async def parse_package(files: list[UploadFile] = File(...), force: bool = False):
-        """一个合同包可包含多个原件：合并 PDF 正文只生成一个草稿，Word 仅作为附件留存。"""
+    def parse_package(files: list[UploadFile] = File(...), force: bool = False):
+        """在线程池解析合同包，避免大文件处理独占 ASGI 事件循环。"""
         if not files:
             raise HTTPException(status_code=400, detail="未接收到合同文件")
         extraction_page_limit = _CONTRACT_PARSE_PAGE_LIMIT
@@ -172,7 +173,7 @@ def create_app(conn_factory, deps: IngestDeps,
             for upload in files:
                 name = upload.filename or "contract.pdf"
                 suffix = Path(name).suffix.lower()
-                content = await upload.read()
+                content = upload.file.read()
                 if suffix == ".zip":
                     expanded_files.extend(_extract_contract_zip(content, name))
                 elif suffix in _ARCHIVE_ALLOWED_SUFFIXES:
