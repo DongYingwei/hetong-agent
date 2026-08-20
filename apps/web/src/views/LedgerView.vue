@@ -317,7 +317,11 @@ const moduleFilters = reactive<Record<string, string>>({});
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
-onMounted(async () => {
+/**
+ * 筛选项是辅助数据，不能阻塞合同台账首屏。
+ * 模块或关键词接口短暂失败时，台账仍应先展示全部合同；用户随后仍可重试页面。
+ */
+async function loadFilterOptions() {
   try {
     const res = await contractApi.getModules();
     if (res.code === 200) {
@@ -339,9 +343,15 @@ onMounted(async () => {
         value: item.keyword_name,
       }));
     }
-  } finally {
-    loadData();
+  } catch {
+    // 请求封装会提示失败；首屏台账已独立加载，不再让筛选项失败阻断页面。
   }
+}
+
+onMounted(() => {
+  // 先查询台账，避免辅助筛选接口延迟造成首屏空表、只能点击“重置”才出现数据。
+  void loadData();
+  void loadFilterOptions();
 });
 
 async function loadData() {
