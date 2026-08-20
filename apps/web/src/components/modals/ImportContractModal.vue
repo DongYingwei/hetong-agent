@@ -27,7 +27,7 @@
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
         <p class="text-sm font-medium text-gray-700">选择单合同文件、多个附件或合同 ZIP 包</p>
-        <p class="text-xs text-gray-400 mt-1.5">ZIP 会在服务端安全解压；同一组文件只生成一份合同草稿；单文件不超过 300MB</p>
+        <p class="text-xs text-gray-400 mt-1.5">ZIP 会在服务端安全解压；同一组文件只生成一份合同草稿；单文件不超过 500MB</p>
       </div>
 
       <!-- 已选择待解析的文件列表 -->
@@ -205,8 +205,8 @@ function handleFileDrop(e: DragEvent) {
 }
 
 function selectContractFiles(files: File[]) {
-  if (files.some((file) => file.size > 300 * 1024 * 1024)) {
-    ElMessage.error('单个合同文件不能超过 300MB');
+  if (files.some((file) => file.size > 500 * 1024 * 1024)) {
+    ElMessage.error('单个合同文件不能超过 500MB');
     return;
   }
   if (files.some((file) => !/\.(pdf|doc|docx|zip)$/i.test(file.name))) {
