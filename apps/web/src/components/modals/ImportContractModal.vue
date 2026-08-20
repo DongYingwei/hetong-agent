@@ -48,6 +48,11 @@
           </el-icon>
         </div>
       </div>
+      <div class="mt-4 flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2.5 text-xs">
+        <span class="text-gray-600">台账字段识别页数</span>
+        <el-input v-model="extractionPageLimit" inputmode="numeric" class="w-20" />
+        <span class="text-gray-400">默认前 50 页；全文仍会解析、检索并进入向量库</span>
+      </div>
     </div>
 
     <!-- 阶段 2：AI 智能解析进度 -->
@@ -165,6 +170,7 @@ const visible = ref(false);
 const phase = ref<'upload' | 'parsing' | 'done'>('upload');
 const fileInputRef = ref<HTMLInputElement | null>(null);
 const selectedFiles = ref<File[]>([]);
+const extractionPageLimit = ref('50');
 
 const progressPercent = ref(0);
 const currentParsingHint = ref('');
@@ -223,6 +229,7 @@ function removeFile(index: number) {
 function resetImport() {
   phase.value = 'upload';
   selectedFiles.value = [];
+  extractionPageLimit.value = '50';
   progressPercent.value = 0;
   parsedResults.value = [];
   currentParsingHint.value = '';
@@ -259,7 +266,11 @@ async function startParsing() {
     const formData = new FormData();
     selectedFiles.value.forEach((file) => formData.append('files', file));
     currentParsingHint.value = `正在解析 ${selectedFiles.value.length} 个合同附件（MinerU + LLM，大文件可能数分钟）...`;
-    const res = await parseApi.uploadPackage(formData);
+    const pageLimit = Number.parseInt(extractionPageLimit.value, 10);
+    if (!Number.isInteger(pageLimit) || pageLimit < 1 || pageLimit > 200) {
+      throw new Error('台账字段识别页数请填写 1 至 200 的整数');
+    }
+    const res = await parseApi.uploadPackage(formData, false, pageLimit);
     if (res.code !== 200 || !res.data?.draft_id) throw new Error(res.msg || '合同包解析未产生草稿');
     const f = (res.data.draft?.form ?? {}) as DraftForm;
     parsedResults.value = [{

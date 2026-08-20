@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from .config import load_settings
 from .clients import HttpMineruClient, DeepSeekExtractClient
 from .ingest import IngestDeps, ingest_one
-from .extract import ModuleConfig
+from .extract import ModuleConfig, ledger_extraction_context
 from .keywords import KeywordMatcher
 from .sync import sync_source_update, sync_label_update, ContractNotFound
 from .vector import EmbeddingClient, VectorStore, vectorize_confirmed_contract
@@ -91,7 +91,8 @@ def create_app(conn_factory, deps: IngestDeps,
         return {"status": "ok"}
 
     @app.post("/parse")
-    async def parse(file: UploadFile = File(...), force: bool = False):
+    async def parse(file: UploadFile = File(...), force: bool = False, extraction_page_limit: int = 50):
+        extraction_page_limit = min(max(extraction_page_limit, 1), 200)
         if not file.filename or not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="仅接受 PDF 文件")
         # 上传文件先落持久原件目录，再复用或生成与批量导入完全相同的 md-pdf 缓存。
@@ -122,7 +123,10 @@ def create_app(conn_factory, deps: IngestDeps,
             markdown = markdown_path.read_text(encoding="utf-8")
             conn = conn_factory()
             try:
-                result = ingest_one(conn, str(pdf_path), deps, force=force, markdown=markdown)
+                result = ingest_one(
+                    conn, str(pdf_path), deps, force=force, markdown=markdown,
+                    extraction_context=ledger_extraction_context(markdown, extraction_page_limit),
+                )
                 if result.status == "ingested" and result.draft_id is not None:
                     _register_uploaded_source(
                         conn, result.draft_id, sha, relative_path,
@@ -150,10 +154,11 @@ def create_app(conn_factory, deps: IngestDeps,
         return payload
 
     @app.post("/parse-package")
-    async def parse_package(files: list[UploadFile] = File(...), force: bool = False):
+    async def parse_package(files: list[UploadFile] = File(...), force: bool = False, extraction_page_limit: int = 50):
         """一个合同包可包含多个原件：合并 PDF 正文只生成一个草稿，Word 仅作为附件留存。"""
         if not files:
             raise HTTPException(status_code=400, detail="未接收到合同文件")
+        extraction_page_limit = min(max(extraction_page_limit, 1), 200)
         package_key = f"upload-package:{uuid.uuid4().hex}"
         sources: list[dict] = []
         pdfs: list[tuple[Path, str, str]] = []
@@ -188,9 +193,17 @@ def create_app(conn_factory, deps: IngestDeps,
                 f"# 附件：{Path(source['relative_path']).name}\n\n{source['markdown']}"
                 for source in sources if source["markdown"]
             )
+            extraction_markdown = "\n\n".join(
+                f"# 附件：{Path(source['relative_path']).name}\n\n"
+                f"{ledger_extraction_context(source['markdown'], extraction_page_limit)}"
+                for source in sources if source["markdown"]
+            )
             conn = conn_factory()
             try:
-                result = ingest_one(conn, str(pdfs[0][0]), deps, force=force, markdown=merged_markdown)
+                result = ingest_one(
+                    conn, str(pdfs[0][0]), deps, force=force, markdown=merged_markdown,
+                    extraction_context=extraction_markdown,
+                )
                 if result.status == "ingested" and result.draft_id is not None:
                     _register_uploaded_package(conn, result.draft_id, package_key, sources)
             finally:

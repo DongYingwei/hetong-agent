@@ -10,6 +10,7 @@ from .extract import (
     DraftContract,
     ModuleConfig,
     ModuleHit,
+    ledger_extraction_context,
 )
 from .keywords import KeywordMatcher, KeywordHit
 from .schema import ContractExtraction
@@ -35,6 +36,7 @@ __all__ = [
     "DraftContract",
     "ModuleConfig",
     "ModuleHit",
+    "ledger_extraction_context",
     "KeywordMatcher",
     "KeywordHit",
     "ContractExtraction",

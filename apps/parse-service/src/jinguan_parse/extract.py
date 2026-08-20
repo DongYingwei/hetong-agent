@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field as dc_field
+import re
 
 from .clients import ExtractClient, MineruClient
 from .keywords import KeywordMatcher
@@ -91,16 +92,30 @@ def extract_one_contract(
     return extract_markdown(markdown, extractor, modules, matcher)
 
 
+_PAGE_MARKER = re.compile(r"(?im)^\s*(?:page\s+|第\s*)(\d+)(?:\s*(?:of\s+\d+|/\s*\d+|页))?\s*$")
+
+
+def ledger_extraction_context(markdown: str, page_limit: int = 50, fallback_chars: int = 120_000) -> str:
+    """取台账字段抽取重点上下文；全文仍用于关键词与向量检索。"""
+    if page_limit < 1:
+        return markdown
+    for marker in _PAGE_MARKER.finditer(markdown):
+        if int(marker.group(1)) > page_limit:
+            return markdown[:marker.start()].rstrip()
+    return markdown if len(markdown) <= fallback_chars else markdown[:fallback_chars].rstrip()
+
+
 def extract_markdown(
     markdown: str,
     extractor: ExtractClient,
     modules: list[ModuleConfig],
     matcher: KeywordMatcher,
+    extraction_context: str | None = None,
 ) -> DraftContract:
-    """已有 Markdown → 草稿结构；供缓存 Markdown/多文件合同包复用。"""
+    """已有 Markdown → 草稿结构；全文保留，字段抽取可限于前页重点上下文。"""
 
     # 2. DeepSeek 抽 17 标量 AI 字段
-    extraction: ContractExtraction = extractor.extract(markdown)
+    extraction: ContractExtraction = extractor.extract(extraction_context or markdown)
     ai_fields = extraction.flat_ai_fields()
     ai_raw = {f"{k}_ai_raw": v for k, v in ai_fields.items()}
 

@@ -66,7 +66,7 @@ class IngestDeps:
 
 
 def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = False,
-               markdown: str | None = None) -> IngestResult:
+               markdown: str | None = None, extraction_context: str | None = None) -> IngestResult:
     """处理一份 PDF：指纹去重 → 抽取 → 落草稿。失败返回 status=failed，不抛。
 
     force=True：跳过指纹去重（重新解析）。若同指纹草稿已存在，先删旧草稿再重建；
@@ -82,7 +82,7 @@ def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = Fals
                 cur.execute("DELETE FROM contracts_draft WHERE source_sha256 = %s", (sha,))
             conn.commit()
         # HTTP 上传已先落统一 Markdown 缓存时，禁止重复调用 MinerU；批处理仍沿用原有路径。
-        draft = (extract_markdown(markdown, deps.extractor, deps.modules, deps.matcher)
+        draft = (extract_markdown(markdown, deps.extractor, deps.modules, deps.matcher, extraction_context)
                  if markdown is not None
                  else extract_one_contract(path, deps.mineru, deps.extractor, deps.modules, deps.matcher))
         if deps.contract_no_of is not None:
