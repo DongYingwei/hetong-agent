@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     llm_base_url: str = "https://api.deepseek.com"
     llm_model: str = "deepseek-v4-flash"
     llm_api_key: str = ""
+    # DeepSeek 对合同正文触发 Content Exists Risk 时，使用本地 Qwen 作一次兜底。
+    llm_fallback_base_url: str = "http://192.168.101.214:6015/v1"
+    llm_fallback_model: str = "Qwen3-30B-A3B"
+    llm_fallback_api_key: str = "EMPTY"
 
     # 向量端点（T04/T07 用）
     embed_base_url: str = "http://192.168.121.33:8008"

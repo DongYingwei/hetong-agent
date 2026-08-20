@@ -126,3 +126,19 @@ class DeepSeekExtractClient:
                 {"role": "user", "content": markdown},
             ],
         )
+
+
+class ContentRiskFallbackExtractClient:
+    """仅在云端内容风控拒绝时切换本地模型，其他故障保持可见。"""
+
+    def __init__(self, primary: ExtractClient, fallback: ExtractClient) -> None:
+        self._primary = primary
+        self._fallback = fallback
+
+    def extract(self, markdown: str) -> ContractExtraction:
+        try:
+            return self._primary.extract(markdown)
+        except Exception as exc:
+            if "Content Exists Risk" not in str(exc):
+                raise
+            return self._fallback.extract(markdown)

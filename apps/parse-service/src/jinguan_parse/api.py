@@ -16,7 +16,7 @@ from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.responses import FileResponse
 
 from .config import load_settings
-from .clients import HttpMineruClient, DeepSeekExtractClient
+from .clients import HttpMineruClient, DeepSeekExtractClient, ContentRiskFallbackExtractClient
 from .ingest import IngestDeps, ingest_one
 from .extract import ModuleConfig
 from .keywords import KeywordMatcher
@@ -724,7 +724,14 @@ def build_default_app() -> FastAPI:
     s = load_settings(".env")
     deps = IngestDeps(
         mineru=HttpMineruClient(s),
-        extractor=DeepSeekExtractClient(s),
+        extractor=ContentRiskFallbackExtractClient(
+            DeepSeekExtractClient(s),
+            DeepSeekExtractClient(s.model_copy(update={
+                "llm_base_url": s.llm_fallback_base_url,
+                "llm_model": s.llm_fallback_model,
+                "llm_api_key": s.llm_fallback_api_key,
+            })),
+        ),
         modules=_load_modules_from_db(s.pg_url),
         matcher=_load_matcher(s),  # §6.2 台账「AI业绩关键词」词表
     )
