@@ -14,6 +14,7 @@ import subprocess
 import sys
 import time
 import uuid
+from decimal import Decimal
 
 import pytest
 
@@ -25,7 +26,7 @@ _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import extract_one_contract, ModuleConfig, KeywordMatcher, ContractExtraction  # noqa: E402
 from jinguan_parse.schema import SummaryFields, AmountFields, CommercialFields  # noqa: E402
-from jinguan_parse.persist import insert_draft  # noqa: E402
+from jinguan_parse.persist import insert_draft, normalize_amount, normalize_date  # noqa: E402
 from fakes import FakeMineruClient, FakeExtractClient  # noqa: E402
 
 psycopg = pytest.importorskip("psycopg")
@@ -108,9 +109,9 @@ def test_insert_draft_roundtrip(pg_conn, draft):
     assert ctype == "框架"                    # 文本 AI 列写入
     assert cust == "兴晟泽"
     assert tag_ai == 1                         # service 段命中「智能巡检」
-    # DATE/DECIMAL 主列首版 NULL，原文在 _ai_raw
-    assert sign_date is None and sign_raw == "2025年8月15日"
-    assert amount is None and amount_raw == "20.73万元"
+    # DATE/DECIMAL 主列规整，原文仍在 _ai_raw 留痕
+    assert str(sign_date) == "2025-08-15" and sign_raw == "2025年8月15日"
+    assert amount == Decimal("207300.00") and amount_raw == "20.73万元"
     # 模块命中存 JSONB，两模块
     hits = mhits if isinstance(mhits, list) else json.loads(mhits)
     by_key = {h["module_key"]: h for h in hits}
@@ -126,3 +127,12 @@ def test_draft_confirmed_check_rejects_formal(pg_conn, draft):
             cur.execute("INSERT INTO contracts_draft (contract_no, confirmed) VALUES ('X', 1)")
         pg_conn.commit()
     pg_conn.rollback()
+
+
+def test_normalize_date_and_amount_are_conservative():
+    assert normalize_date("2026年3月20日").isoformat() == "2026-03-20"
+    assert normalize_date("2026-03-20").isoformat() == "2026-03-20"
+    assert normalize_date("2026年13月20日") is None
+    assert normalize_amount("人民币【5341064.40】元") == Decimal("5341064.40")
+    assert normalize_amount("20.73万元") == Decimal("207300.00")
+    assert normalize_amount("合同总额 100 元，预付款 30 元") is None
