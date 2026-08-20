@@ -269,11 +269,22 @@ async function startParsing() {
     selectedFiles.value.forEach((file) => formData.append('files', file));
     const res = await parseApi.enqueueJobs(formData);
     if (res.code !== 200) throw new Error(res.msg || '合同上传失败');
-    const jobCount = res.data?.jobs?.length || 0;
+    const jobs = res.data?.jobs || [];
+    const createdCount = jobs.filter((job) => job.id !== null).length;
+    const duplicateDraftCount = jobs.filter((job) => job.status === 'skipped_duplicate' && job.draft_id).length;
+    const duplicateConfirmedCount = jobs.filter((job) => job.status === 'skipped_duplicate' && job.contract_id).length;
     visible.value = false;
     resetImport();
     emit('success');
-    ElMessage.success(`上传完成，已创建 ${jobCount} 个解析任务；右上角可查看进度`);
+    if (createdCount) {
+      ElMessage.success(`上传完成，已创建 ${createdCount} 个解析任务；可在合同台账查看进度`);
+    }
+    if (duplicateDraftCount) {
+      ElMessage.info(`其中 ${duplicateDraftCount} 份附件已有解析草稿，已保留待核对记录`);
+    }
+    if (duplicateConfirmedCount) {
+      ElMessage.info(`其中 ${duplicateConfirmedCount} 份附件已关联正式合同，未重复解析`);
+    }
   } catch (err: any) {
     ElMessage.error(`解析失败：${err?.response?.data?.msg || err?.message || '未知错误'}`);
     phase.value = 'upload';
