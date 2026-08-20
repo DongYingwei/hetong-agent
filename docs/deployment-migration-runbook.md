@@ -206,6 +206,18 @@ MARKDOWN_ROOT=/data/jingxiaoguan/contracts/md-file
 3. 设置 `MD_DIR=/data/jingxiaoguan/epms/md-epms`，后台运行 `scripts/analyze_order_ai_modules.py`，重新写入 AI 订单四模块。
 4. 校验 `sys_order` 总数、`tag_ai=1` 数量与 `order_module_hits` 的不同订单数。模型 JSON 反复失败的订单，可仅携带 `--order-no` 并改用 DeepSeek 进行定向重试。
 
+### 6.3 订单编辑从旧覆盖层切换为主表
+
+部署“订单直接更新”版本前，执行一次迁移，把旧 `order_manual_overrides` 中已保存的人工值写回 `sys_order`，然后清空覆盖层：
+
+```bash
+docker exec -i jingxiaoguan-postgres \
+  psql -U postgres -d contract_assistant -v ON_ERROR_STOP=1 \
+  < /opt/jingxiaoguan/current/apps/gateway/scripts/migrations/015_materialize_order_manual_overrides.sql
+```
+
+此后订单列表、详情、综合检索、统计和导出都以 `sys_order` 的最新值为准。全量 Excel 重导仍会覆盖订单主表，重导前需要按 6.2 备份。
+
 ## 7. 当前验收前事项
 
 1. 按 4.1 重建 `jingxiaoguan-web` Nginx 容器，确认 `5174` 能访问前端且 `/api/health` 经反代成功。

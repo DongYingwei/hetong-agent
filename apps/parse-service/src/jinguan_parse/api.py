@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import tempfile
 import uuid
+import zipfile
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
@@ -33,6 +35,39 @@ _DRAFT_FORM_COLS = [
     "amount_type", "amount", "tax_rate", "settlement_terms",
     "post_eval", "deposit_amount", "deposit_refund", "arbitration", "authorizer", "tag_ai",
 ]
+
+_ARCHIVE_ALLOWED_SUFFIXES = {".pdf", ".doc", ".docx"}
+_ARCHIVE_MAX_FILES = 200
+_ARCHIVE_MAX_UNCOMPRESSED_BYTES = 1024 * 1024 * 1024  # 1 GiB，防 ZIP 炸弹
+
+
+def _extract_contract_zip(content: bytes, archive_name: str) -> list[tuple[str, bytes]]:
+    """安全展开一个合同 ZIP 包，只返回可处理的合同附件。"""
+    try:
+        archive = zipfile.ZipFile(BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(status_code=400, detail=f"合同压缩包无效：{archive_name}") from exc
+    extracted: list[tuple[str, bytes]] = []
+    total_size = 0
+    with archive:
+        for info in archive.infolist():
+            raw_path = Path(info.filename)
+            if info.is_dir():
+                continue
+            # 禁止绝对路径和 ../，避免 Zip Slip 覆盖服务器任意文件。
+            if raw_path.is_absolute() or ".." in raw_path.parts:
+                raise HTTPException(status_code=400, detail="合同压缩包包含非法路径")
+            if raw_path.suffix.lower() not in _ARCHIVE_ALLOWED_SUFFIXES:
+                continue
+            if len(extracted) >= _ARCHIVE_MAX_FILES:
+                raise HTTPException(status_code=400, detail=f"合同压缩包最多包含 {_ARCHIVE_MAX_FILES} 个 PDF/Word 文件")
+            total_size += info.file_size
+            if total_size > _ARCHIVE_MAX_UNCOMPRESSED_BYTES:
+                raise HTTPException(status_code=400, detail="合同压缩包解压后超过 1GB 限制")
+            extracted.append((raw_path.name, archive.read(info)))
+    if not extracted:
+        raise HTTPException(status_code=400, detail="合同压缩包中未找到 PDF、DOC 或 DOCX 文件")
+    return extracted
 
 
 def create_app(conn_factory, deps: IngestDeps,
@@ -123,12 +158,20 @@ def create_app(conn_factory, deps: IngestDeps,
         sources: list[dict] = []
         pdfs: list[tuple[Path, str, str]] = []
         try:
+            expanded_files: list[tuple[str, bytes]] = []
             for upload in files:
                 name = upload.filename or "contract.pdf"
                 suffix = Path(name).suffix.lower()
-                if suffix not in {".pdf", ".doc", ".docx"}:
+                content = await upload.read()
+                if suffix == ".zip":
+                    expanded_files.extend(_extract_contract_zip(content, name))
+                elif suffix in _ARCHIVE_ALLOWED_SUFFIXES:
+                    expanded_files.append((name, content))
+                else:
                     raise HTTPException(status_code=400, detail=f"不支持的附件格式：{name}")
-                path, relative_path, sha = persist_upload(await upload.read(), name, source_root)
+            for name, content in expanded_files:
+                suffix = Path(name).suffix.lower()
+                path, relative_path, sha = persist_upload(content, name, source_root)
                 source = {"path": path, "relative_path": relative_path, "sha": sha,
                           "source_type": suffix[1:], "markdown_path": None, "markdown": None}
                 if suffix == ".pdf":

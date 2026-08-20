@@ -9,8 +9,8 @@
     <template #header><div class="flex items-center justify-between pr-6"><span>订单详情</span><div v-if="editing"><el-button link @click="editing=false">取消</el-button><el-button type="primary" link :loading="saving" @click="saveEdit">保存</el-button></div></div></template>
     <div v-if="order" class="space-y-5 overflow-y-auto max-h-[70vh] pr-2">
       <div v-if="editing" class="rounded-lg border border-gray-200 bg-gray-50 p-4">
-        <div class="mb-3 text-sm font-medium text-[#303133]">人工编辑（保存为覆盖层，不改写 EPMS 源数据）</div>
-        <p class="mb-3 text-xs text-gray-500">可修改全部订单台账业务字段；订单内部标识、EPMS 来源标识及 AI 关键词解析结果保持只读。</p>
+        <div class="mb-3 text-sm font-medium text-[#303133]">人工编辑（直接更新订单台账）</div>
+        <p class="mb-3 text-xs text-gray-500">保存后，列表、综合检索、统计与导出均以修改后的订单数据为准。</p>
         <el-collapse v-model="editingSections">
           <el-collapse-item v-for="section in editableSections" :key="section.name" :name="section.name" :title="section.name">
             <el-form label-width="118px" class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
@@ -25,6 +25,22 @@
             </el-form>
           </el-collapse-item>
         </el-collapse>
+        <div class="mt-4 border-t border-gray-200 pt-4">
+          <div class="mb-3 text-sm font-medium text-[#303133]">AI关键词解析结果</div>
+          <div class="grid grid-cols-2 gap-2">
+            <div v-for="module in aiModules" :key="module.key" class="rounded-lg border border-gray-200 bg-white p-3">
+              <div class="mb-2 text-sm font-medium text-[#1A1A1A]">{{ module.name }}</div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span v-for="keyword in editModuleKeywords[module.key]" :key="keyword" class="tag tag-green inline-flex items-center gap-1" style="font-size:11px">
+                  {{ keyword }}<el-icon class="cursor-pointer hover:text-red-500" @click="removeModuleKeyword(module.key, keyword)"><Close /></el-icon>
+                </span>
+                <el-select v-model="moduleKeywordSelection[module.key]" size="small" filterable clearable placeholder="选择关键词" class="w-32" @change="addModuleKeyword(module.key)">
+                  <el-option v-for="item in availableKeywords" :key="item.id" :label="item.keyword_name" :value="item.keyword_name" :disabled="(editModuleKeywords[module.key] || []).includes(item.keyword_name)" />
+                </el-select>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
       <!-- 1. 基本信息 -->
       <div>
@@ -46,10 +62,10 @@
           <div><label class="text-xs text-gray-400">客户名称</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.customer_name || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">考核线</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.assessment_line || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">客户线</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.customer_line || '—' }}</div></div>
-          <div><label class="text-xs text-gray-400">客户类型</label><div class="text-sm text-gray-400 mt-0.5">{{ order.customer_type || '无' }}</div></div>
+          <div><label class="text-xs text-gray-400">客户类型</label><div class="text-sm text-gray-400 mt-0.5">{{ order.customer_type || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">结算方式</label><div class="text-sm text-gray-400 mt-0.5">{{ order.settlement_type || '—' }}</div></div>
-          <div><label class="text-xs text-gray-400">订单类型</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_type || 'ARP' }}</div></div>
-          <div><label class="text-xs text-gray-400">订单属性</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_attr || 'JS' }}</div></div>
+          <div><label class="text-xs text-gray-400">订单类型</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_type || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">订单属性</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_attr || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">业务员</label><div class="text-sm text-gray-400 mt-0.5">{{ order.salesperson || '—' }}</div></div>
         </div>
       </div>
@@ -81,17 +97,17 @@
       <div>
         <h4 class="text-xs font-semibold text-gray-400 mb-3 pb-1.5 border-b border-gray-100">订单金额</h4>
         <div class="grid grid-cols-2 gap-x-5 gap-y-3">
-          <div><label class="text-xs text-gray-400">订单状态</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_status || '执行中' }}</div></div>
+          <div><label class="text-xs text-gray-400">订单状态</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.order_status || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">订单税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRateLabel(order.tax_rate) }}</div></div>
-          <div><label class="text-xs text-gray-400">订单含税总额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrency(order.amount) }}</div></div>
-          <div><label class="text-xs text-gray-400">订单不含税总额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrency(order.amount_ex_tax || order.amount * 0.94) }}</div></div>
+          <div><label class="text-xs text-gray-400">订单含税总额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrencyOrDash(order.amount) }}</div></div>
+          <div><label class="text-xs text-gray-400">订单不含税总额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrencyOrDash(order.amount_ex_tax) }}</div></div>
           <div><label class="text-xs text-gray-400">订单明细单号</label><div class="text-sm text-[#1A1A1A] font-mono mt-0.5">{{ order.detail_order_no || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">客方订单明细单号</label><div class="text-sm text-gray-400 mt-0.5">{{ order.customer_detail_order_no || '—' }}</div></div>
-          <div><label class="text-xs text-gray-400">赎期(天)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.redemption_days ?? 0 }}</div></div>
-          <div><label class="text-xs text-gray-400">是否末单</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.is_last_order || '否' }}</div></div>
+          <div><label class="text-xs text-gray-400">赎期(天)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.redemption_days ?? '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">是否末单</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.is_last_order || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">明细税率(%)</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatTaxRateLabel(order.detail_tax_rate ?? order.tax_rate) }}</div></div>
-          <div><label class="text-xs text-gray-400">明细含税金额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrency(order.detail_amount ?? order.amount) }}</div></div>
-          <div><label class="text-xs text-gray-400">明细不含税金额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrency(order.detail_amount_ex_tax || order.amount * 0.94) }}</div></div>
+          <div><label class="text-xs text-gray-400">明细含税金额</label><div class="text-sm text-[#1A1A1A] font-semibold mt-0.5">{{ formatCurrencyOrDash(order.detail_amount) }}</div></div>
+          <div><label class="text-xs text-gray-400">明细不含税金额</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ formatCurrencyOrDash(order.detail_amount_ex_tax) }}</div></div>
         </div>
       </div>
 
@@ -153,10 +169,10 @@
       <div>
         <h4 class="text-xs font-semibold text-gray-400 mb-3 pb-1.5 border-b border-gray-100">附件信息</h4>
         <div class="grid grid-cols-2 gap-x-5 gap-y-3">
-          <div><label class="text-xs text-gray-400">附件</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.has_attachment || '有' }}</div></div>
-          <div><label class="text-xs text-gray-400">最新附件上传时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.latest_attachment_time || '2026-07-23 14:56:03' }}</div></div>
+          <div><label class="text-xs text-gray-400">附件</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.has_attachment || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">最新附件上传时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.latest_attachment_time || '—' }}</div></div>
           <div><label class="text-xs text-gray-400">附件数量</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.attachment_count || 3 }}</div></div>
-          <div><label class="text-xs text-gray-400">含eml附件</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.has_eml || '是' }}</div></div>
+          <div><label class="text-xs text-gray-400">含eml附件</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.has_eml || '—' }}</div></div>
         </div>
       </div>
 
@@ -164,14 +180,14 @@
       <div>
         <h4 class="text-xs font-semibold text-gray-400 mb-3 pb-1.5 border-b border-gray-100">制单信息</h4>
         <div class="grid grid-cols-2 gap-x-5 gap-y-3">
-          <div><label class="text-xs text-gray-400">制单人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.maker || '陈心瑜B' }}</div></div>
-          <div><label class="text-xs text-gray-400">制单时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.make_time || '2026-07-23 14:55:38' }}</div></div>
-          <div><label class="text-xs text-gray-400">明细制单人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.detail_maker || '陈心瑜B' }}</div></div>
-          <div><label class="text-xs text-gray-400">明细制单时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.detail_make_time || '2026-07-23 14:55:38' }}</div></div>
-          <div><label class="text-xs text-gray-400">更新人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.updater || '陈心瑜B' }}</div></div>
-          <div><label class="text-xs text-gray-400">更新时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.update_time || '2026-07-23 14:56:08' }}</div></div>
-          <div><label class="text-xs text-gray-400">审核人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.auditor || '陈心瑜B' }}</div></div>
-          <div><label class="text-xs text-gray-400">审核时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.audit_time || '2026-07-23 14:56:08' }}</div></div>
+          <div><label class="text-xs text-gray-400">制单人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.maker || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">制单时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.make_time || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">明细制单人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.detail_maker || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">明细制单时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.detail_make_time || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">更新人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.updater || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">更新时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.update_time || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">审核人</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.auditor || '—' }}</div></div>
+          <div><label class="text-xs text-gray-400">审核时间</label><div class="text-sm text-[#1A1A1A] mt-0.5">{{ order.audit_time || '—' }}</div></div>
         </div>
       </div>
 
@@ -208,8 +224,9 @@
 import { reactive, ref, watch } from 'vue';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import type { OrderLedger } from '../../types';
-import { orderApi } from '../../api';
+import { keywordApi, orderApi } from '../../api';
 import { ElMessage } from 'element-plus';
+import { Close } from '@element-plus/icons-vue';
 
 const props = defineProps<{
   modelValue: boolean;
@@ -268,6 +285,10 @@ const editableSections: Array<{ name: string; fields: EditableField[] }> = [
 const numericFields = editableSections.flatMap((section) => section.fields).filter((field) => field.kind === 'number');
 const editingSections = ref(editableSections.map((section) => section.name));
 const editForm = reactive<Record<string, unknown>>({});
+type ManagedKeyword = { id: number; keyword_name: string };
+const availableKeywords = ref<ManagedKeyword[]>([]);
+const editModuleKeywords = reactive<Record<string, string[]>>({ role: [], service: [], tech: [], staff: [] });
+const moduleKeywordSelection = reactive<Record<string, string>>({ role: '', service: '', tech: '', staff: '' });
 const aiModules = [
   { key: 'role', name: '合同/项目名称', description: '含（合同名称、项目名称）' },
   { key: 'service', name: '合同服务内容', description: '含（项目内容、服务标的、项目交付物）' },
@@ -305,6 +326,13 @@ function beginEdit() {
         ? (formatTaxRate(value) ?? '')
         : (value ?? null);
   }
+  for (const module of aiModules) {
+    editModuleKeywords[module.key] = editableModuleKeywords(module.key);
+    moduleKeywordSelection[module.key] = '';
+  }
+  keywordApi.getList({ page: 1, pageSize: 200, status: 1 })
+    .then((res) => { if (res.code === 200) availableKeywords.value = res.data.list || []; })
+    .catch(() => ElMessage.error('读取关键词管理失败，暂时不能修改关键词解析结果'));
   editingSections.value = editableSections.map((section) => section.name);
   editing.value = true;
 }
@@ -325,7 +353,12 @@ async function saveEdit() {
     }
     const res = await orderApi.update(props.order.id, payload as Partial<OrderLedger>);
     if (res.code !== 200) throw new Error(res.msg);
+    const moduleHits = aiModules.map((module) => ({ module_key: module.key, keywords: editModuleKeywords[module.key] || [] }));
+    const hitRes = await orderApi.updateModuleHits(props.order.id, moduleHits);
+    if (hitRes.code !== 200) throw new Error(hitRes.msg);
     Object.assign(props.order, payload);
+    (props.order as any).module_hits = moduleHits.map((item) => ({ ...item, hit: item.keywords.length ? 1 : 0 }));
+    (props.order as any).tag_ai = moduleHits.some((item) => item.keywords.length) ? 1 : 0;
     editing.value = false;
     visible.value = false;
     emit('updated');
@@ -337,10 +370,25 @@ async function saveEdit() {
   }
 }
 
+function removeModuleKeyword(moduleKey: string, keyword: string) {
+  editModuleKeywords[moduleKey] = (editModuleKeywords[moduleKey] || []).filter((item) => item !== keyword);
+}
+
+function addModuleKeyword(moduleKey: string) {
+  const keyword = moduleKeywordSelection[moduleKey];
+  moduleKeywordSelection[moduleKey] = '';
+  const keywords = editModuleKeywords[moduleKey] || [];
+  if (keyword && !keywords.includes(keyword)) keywords.push(keyword);
+}
+
 function formatTaxRate(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null;
   const rate = Number(value);
   return Number.isFinite(rate) ? rate.toFixed(4) : String(value);
+}
+
+function formatCurrencyOrDash(value: unknown): string {
+  return value === null || value === undefined || value === '' ? '—' : formatCurrency(value as number | string);
 }
 
 function formatTaxRateLabel(value: unknown): string {
@@ -355,6 +403,11 @@ function moduleHit(key: string) {
 function moduleKeywords(key: string): string[] {
   const raw = props.order?.module_hits?.find((x) => x.module_key === key && x.hit === 1)?.keywords;
   return raw ? raw.split(',').filter(Boolean) : ['AI'];
+}
+
+function editableModuleKeywords(key: string): string[] {
+  const raw = props.order?.module_hits?.find((x) => x.module_key === key)?.keywords;
+  return raw ? raw.split(',').filter(Boolean) : [];
 }
 </script>
 

@@ -17,9 +17,9 @@ export const orderApi = {
     return request.get(`/order/detail/${id}`);
   },
 
-  // 更新订单AI关键词
-  updateKeywords(id: number, keywords: string[]): Promise<ApiResponse<any>> {
-    return request.post(`/order/update-keywords`, { id, keywords });
+  /** 保存四模块关键词解析结果；关键词必须来自关键词管理的启用项。 */
+  updateModuleHits(id: number, module_hits: Array<{ module_key: string; keywords: string[] }>): Promise<ApiResponse<{ id: number; tag_ai: number }>> {
+    return request.put(`/order/detail/${id}/module-hits`, { module_hits });
   },
 
   update(

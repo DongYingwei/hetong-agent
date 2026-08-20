@@ -66,7 +66,7 @@ router.post('/upload-package', async (ctx) => {
     for (const file of files) {
       const originalName = file.originalFilename || file.newFilename || 'contract.pdf';
       const ext = originalName.split('.').pop()?.toLowerCase();
-      if (!['pdf', 'doc', 'docx'].includes(ext)) return ctx.fail(`不支持的附件格式：${originalName}`, 400);
+      if (!['pdf', 'doc', 'docx', 'zip'].includes(ext)) return ctx.fail(`不支持的附件格式：${originalName}`, 400);
       const buf = fs.readFileSync(file.filepath);
       const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
       form.append('files', new Blob([buf], { type: contentType }), originalName);

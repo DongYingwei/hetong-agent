@@ -103,8 +103,7 @@ function summarizeContracts(contracts, kind) {
 async function loadOrders(refs) {
   if (refs.ids.length === 0 && refs.nos.length === 0) return [];
   const rows = await query(
-    `SELECT o.*, omo.values AS manual_values
-       FROM sys_order o LEFT JOIN order_manual_overrides omo ON omo.order_id=o.id
+    `SELECT o.* FROM sys_order o
       WHERE o.delete_status=0 AND (o.id = ANY($1::bigint[]) OR o.order_no = ANY($2::text[]))`,
     [refs.ids, refs.nos],
   );
@@ -114,7 +113,7 @@ async function loadOrders(refs) {
                               WHERE order_id = ANY($1::bigint[]) ORDER BY order_id,module_key`, [ids]);
   const byOrder = new Map();
   for (const hit of hits) byOrder.set(hit.order_id, [...(byOrder.get(hit.order_id) || []), hit]);
-  const mapped = rows.map((row) => ({ ...row, ...(row.manual_values || {}), has_ai_keyword: row.tag_ai ?? 0, module_hits: byOrder.get(row.id) || [] }));
+  const mapped = rows.map((row) => ({ ...row, has_ai_keyword: row.tag_ai ?? 0, module_hits: byOrder.get(row.id) || [] }));
   const byId = new Map(mapped.map((row) => [Number(row.id), row]));
   const byNo = new Map(mapped.map((row) => [row.order_no, row]));
   return [...refs.ids.map((id) => byId.get(id)), ...refs.nos.map((no) => byNo.get(no))]

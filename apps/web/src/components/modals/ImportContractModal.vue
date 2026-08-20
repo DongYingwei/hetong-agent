@@ -19,15 +19,15 @@
           ref="fileInputRef"
           type="file"
           multiple
-          accept=".pdf,.doc,.docx"
+          accept=".pdf,.doc,.docx,.zip"
           class="hidden"
           @change="handleFileSelect"
         />
         <svg class="w-12 h-12 mx-auto text-gray-300 mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5">
           <path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
         </svg>
-        <p class="text-sm font-medium text-gray-700">选择同一合同的文件，或拖拽文件到此处</p>
-        <p class="text-xs text-gray-400 mt-1.5">支持多个 PDF/Word 附件，整组文件只生成一份合同草稿；单文件不超过 300MB</p>
+        <p class="text-sm font-medium text-gray-700">选择单合同文件、多个附件或合同 ZIP 包</p>
+        <p class="text-xs text-gray-400 mt-1.5">ZIP 会在服务端安全解压；同一组文件只生成一份合同草稿；单文件不超过 300MB</p>
       </div>
 
       <!-- 已选择待解析的文件列表 -->
@@ -209,8 +209,8 @@ function selectContractFiles(files: File[]) {
     ElMessage.error('单个合同文件不能超过 300MB');
     return;
   }
-  if (files.some((file) => !/\.(pdf|doc|docx)$/i.test(file.name))) {
-    ElMessage.error('仅支持 PDF、DOC、DOCX 格式的合同文件');
+  if (files.some((file) => !/\.(pdf|doc|docx|zip)$/i.test(file.name))) {
+    ElMessage.error('仅支持 PDF、DOC、DOCX 或 ZIP 格式的合同文件');
     return;
   }
   selectedFiles.value = files;

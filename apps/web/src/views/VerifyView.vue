@@ -534,13 +534,9 @@
                       ><Close
                     /></el-icon>
                   </span>
-                  <button
-                    v-if="!isReadOnly"
-                    class="inline-flex items-center gap-0.5 text-xs text-[#049667] border border-dashed border-[#049667] rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                    @click="addKeywordPrompt('服务内容')"
-                  >
-                    + 添加
-                  </button>
+                  <el-select v-if="!isReadOnly" v-model="keywordSelection['服务内容']" size="small" filterable clearable placeholder="从关键词管理选择" class="w-40" @change="addSelectedKeyword('服务内容')">
+                    <el-option v-for="item in availableKeywords" :key="item.id" :label="item.keyword_name" :value="item.keyword_name" :disabled="currentForm.keywords['服务内容'].includes(item.keyword_name)" />
+                  </el-select>
                 </div>
               </div>
 
@@ -583,13 +579,9 @@
                       ><Close
                     /></el-icon>
                   </span>
-                  <button
-                    v-if="!isReadOnly"
-                    class="inline-flex items-center gap-0.5 text-xs text-[#049667] border border-dashed border-[#049667] rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                    @click="addKeywordPrompt('技术要求')"
-                  >
-                    + 添加
-                  </button>
+                  <el-select v-if="!isReadOnly" v-model="keywordSelection['技术要求']" size="small" filterable clearable placeholder="从关键词管理选择" class="w-40" @change="addSelectedKeyword('技术要求')">
+                    <el-option v-for="item in availableKeywords" :key="item.id" :label="item.keyword_name" :value="item.keyword_name" :disabled="currentForm.keywords['技术要求'].includes(item.keyword_name)" />
+                  </el-select>
                 </div>
               </div>
 
@@ -628,13 +620,9 @@
                       ><Close
                     /></el-icon>
                   </span>
-                  <button
-                    v-if="!isReadOnly"
-                    class="inline-flex items-center gap-0.5 text-xs text-[#049667] border border-dashed border-[#049667] rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                    @click="addKeywordPrompt('项目名称')"
-                  >
-                    + 添加
-                  </button>
+                  <el-select v-if="!isReadOnly" v-model="keywordSelection['项目名称']" size="small" filterable clearable placeholder="从关键词管理选择" class="w-40" @change="addSelectedKeyword('项目名称')">
+                    <el-option v-for="item in availableKeywords" :key="item.id" :label="item.keyword_name" :value="item.keyword_name" :disabled="currentForm.keywords['项目名称'].includes(item.keyword_name)" />
+                  </el-select>
                 </div>
               </div>
 
@@ -673,13 +661,9 @@
                       ><Close
                     /></el-icon>
                   </span>
-                  <button
-                    v-if="!isReadOnly"
-                    class="inline-flex items-center gap-0.5 text-xs text-[#049667] border border-dashed border-[#049667] rounded px-1.5 py-0.5 bg-white cursor-pointer"
-                    @click="addKeywordPrompt('人员需求')"
-                  >
-                    + 添加
-                  </button>
+                  <el-select v-if="!isReadOnly" v-model="keywordSelection['人员需求']" size="small" filterable clearable placeholder="从关键词管理选择" class="w-40" @change="addSelectedKeyword('人员需求')">
+                    <el-option v-for="item in availableKeywords" :key="item.id" :label="item.keyword_name" :value="item.keyword_name" :disabled="currentForm.keywords['人员需求'].includes(item.keyword_name)" />
+                  </el-select>
                 </div>
               </div>
             </div>
@@ -719,10 +703,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { Back, Search, ZoomIn, ZoomOut, Close } from "@element-plus/icons-vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage } from "element-plus";
 import { contractApi, keywordApi, parseApi } from "../api";
 import type { ContractKeywordHit } from "../api/contractApi";
 import { renderMarkdown } from "../utils/markdown";
@@ -747,6 +731,15 @@ const pdfSources = ref<Array<{ id: number; name: string }>>([]);
 const selectedPdfSourceId = ref<number>();
 const keywordHits = ref<ContractKeywordHit[]>([]);
 const keywordIdByName = ref<Record<string, number>>({});
+type KeywordSection = "服务内容" | "技术要求" | "项目名称" | "人员需求";
+type ManagedKeyword = { id: number; keyword_name: string; status?: number };
+const availableKeywords = ref<ManagedKeyword[]>([]);
+const keywordSelection = reactive<Record<KeywordSection, string>>({
+  服务内容: "", 技术要求: "", 项目名称: "", 人员需求: "",
+});
+const keywordModuleMap: Record<KeywordSection, string> = {
+  服务内容: "service", 技术要求: "tech", 项目名称: "role", 人员需求: "staff",
+};
 
 // 多合同核对 Tab 视图数据
 const fileTabs = ref<Array<{ id: number; fileName: string; verified: boolean; form: Record<string, any> }>>([
@@ -893,6 +886,16 @@ function applyLedgerValues(form: Record<string, any>, source: Record<string, any
 }
 
 onMounted(async () => {
+  // 关键词只能从关键词管理中选择；不接受手工任意文本，避免产生不可追溯的命中词。
+  try {
+    const keywordRes = await keywordApi.getList({ page: 1, pageSize: 200, status: 1 });
+    if (keywordRes.code === 200) {
+      availableKeywords.value = keywordRes.data.list || [];
+      keywordIdByName.value = Object.fromEntries(availableKeywords.value.map((item) => [item.keyword_name, item.id]));
+    }
+  } catch {
+    ElMessage.error("读取关键词管理失败，暂时不能修改关键词解析结果");
+  }
   // 不允许接口失败时回退展示原型合同；核对页始终从空表单开始。
   const initialTab = fileTabs.value[0];
   if (initialTab) {
@@ -969,10 +972,7 @@ onMounted(async () => {
         tab.fileName = item.contract_name + ".pdf";
         applyLedgerValues(tab.form, item);
         tab.verified = item.verify_status === 1;
-        const [hitRes, keywordRes] = await Promise.all([
-          contractApi.getKeywordHits(item.id),
-          keywordApi.getList({ page: 1, pageSize: 100 }),
-        ]);
+        const hitRes = await contractApi.getKeywordHits(item.id);
         if (hitRes.code === 200) {
           keywordHits.value = hitRes.data.list || [];
           type KeywordSection = "服务内容" | "技术要求" | "项目名称" | "人员需求";
@@ -997,14 +997,6 @@ onMounted(async () => {
               grouped[section].push(hit.keyword_name);
           }
           tab.form.keywords = grouped;
-        }
-        if (keywordRes.code === 200) {
-          keywordIdByName.value = Object.fromEntries(
-            (keywordRes.data.list || []).map((x: any) => [
-              x.keyword_name,
-              x.id,
-            ]),
-          );
         }
         const sourceRes = await contractApi.getSourceFiles(item.id);
         if (sourceRes.code === 200) {
@@ -1067,7 +1059,7 @@ function switchFileTab(index: number) {
   activeTabIndex.value = index;
 }
 
-async function removeKeyword(sectionKey: string, index: string | number) {
+async function removeKeyword(sectionKey: KeywordSection, index: string | number) {
   if (isReadOnly.value) return;
   const keywordIndex = Number(index);
   if (!Number.isInteger(keywordIndex) || keywordIndex < 0) return;
@@ -1075,15 +1067,9 @@ async function removeKeyword(sectionKey: string, index: string | number) {
     currentForm.value.keywords[
       sectionKey as keyof typeof currentForm.value.keywords
     ][keywordIndex];
-  const moduleMap: Record<string, string> = {
-    服务内容: "service",
-    技术要求: "tech",
-    项目名称: "role",
-    人员需求: "staff",
-  };
   if (!keyword) return;
   const keywordId = keywordIdByName.value[keyword];
-  const moduleKey = moduleMap[sectionKey];
+  const moduleKey = keywordModuleMap[sectionKey];
   if (targetId.value && keywordId && moduleKey) {
     await contractApi.saveKeywordOverride(targetId.value, {
       module_key: moduleKey,
@@ -1091,51 +1077,32 @@ async function removeKeyword(sectionKey: string, index: string | number) {
       action: "exclude",
     });
   }
-  currentForm.value.keywords[
-    sectionKey as keyof typeof currentForm.value.keywords
-  ].splice(keywordIndex, 1);
+  currentForm.value.keywords[sectionKey].splice(keywordIndex, 1);
 }
 
-function addKeywordPrompt(sectionKey: string) {
+async function addSelectedKeyword(sectionKey: KeywordSection) {
   if (isReadOnly.value) return;
-  ElMessageBox.prompt(`为【${sectionKey}】手动添加关键词`, "添加关键词", {
-    confirmButtonText: "确定添加",
-    cancelButtonText: "取消",
-    inputPlaceholder: "请输入关键词名称（如：AI预测）",
-  }).then(({ value }) => {
-    if (value && value.trim()) {
-      const kwList =
-        currentForm.value.keywords[
-          sectionKey as keyof typeof currentForm.value.keywords
-        ];
-      const keyword = value.trim();
-      const moduleMap: Record<string, string> = {
-        服务内容: "service",
-        技术要求: "tech",
-        项目名称: "role",
-        人员需求: "staff",
-      };
-      const keywordId = keywordIdByName.value[keyword];
-      const moduleKey = moduleMap[sectionKey];
-      if (targetId.value && (!keywordId || !moduleKey)) {
-        ElMessage.error("只能添加关键词管理中已启用的父关键词");
-        return;
-      }
-      if (!kwList.includes(keyword)) {
-        if (targetId.value && keywordId && moduleKey) {
-          contractApi
-            .saveKeywordOverride(targetId.value, {
-              module_key: moduleKey,
-              keyword_id: keywordId,
-              action: "include",
-            })
-            .catch(() => ElMessage.error("保存关键词核对失败"));
-        }
-        kwList.push(keyword);
-        ElMessage.success(`已为【${sectionKey}】添加关键词: ${keyword}`);
-      }
+  const keyword = keywordSelection[sectionKey];
+  keywordSelection[sectionKey] = "";
+  if (!keyword) return;
+  const kwList = currentForm.value.keywords[sectionKey];
+  if (kwList.includes(keyword)) return;
+  const keywordId = keywordIdByName.value[keyword];
+  const moduleKey = keywordModuleMap[sectionKey];
+  if (!keywordId || !moduleKey) {
+    ElMessage.error("只能选择关键词管理中启用的关键词");
+    return;
+  }
+  if (targetId.value) {
+    try {
+      await contractApi.saveKeywordOverride(targetId.value, { module_key: moduleKey, keyword_id: keywordId, action: "include" });
+    } catch {
+      ElMessage.error("保存关键词核对失败");
+      return;
     }
-  });
+  }
+  kwList.push(keyword);
+  ElMessage.success(`已为【${sectionKey}】添加关键词：${keyword}`);
 }
 
 async function handleSaveCurrent() {
