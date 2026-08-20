@@ -264,32 +264,39 @@ const filters = reactive({
 const keywordOptions = ref<Array<{ label: string; value: string }>>([]);
 const keywordTerms = new Map<string, string[]>();
 
-onMounted(async () => {
-  await loadKeywords();
-  const moduleRes = await contractApi.getModules();
-  if (moduleRes.code === 200) {
-    modules.value = moduleRes.data.list;
-    modules.value.forEach((m) => {
-      moduleFilters[m.module_key] ??= "";
-    });
-  }
-  loadData();
-});
-async function loadKeywords() {
-  const res = await keywordApi.getList({ page: 1, pageSize: 200 });
-  if (res.code === 200) {
-    res.data.list.forEach((item: KeywordItem) =>
+/** 筛选项加载失败不能导致订单列表或四个模块筛选项消失。 */
+async function loadFilterOptions() {
+  const [keywordResult, moduleResult] = await Promise.allSettled([
+    keywordApi.getList({ page: 1, pageSize: 200 }),
+    contractApi.getModules(),
+  ]);
+
+  if (keywordResult.status === "fulfilled" && keywordResult.value.code === 200) {
+    keywordResult.value.data.list.forEach((item: KeywordItem) =>
       keywordTerms.set(item.keyword_name, [
         item.keyword_name,
         ...(item.sub_words || []),
       ]),
     );
-    keywordOptions.value = res.data.list.map((item: KeywordItem) => ({
+    keywordOptions.value = keywordResult.value.data.list.map((item: KeywordItem) => ({
       label: item.keyword_name,
       value: item.keyword_name,
     }));
   }
+
+  if (moduleResult.status === "fulfilled" && moduleResult.value.code === 200) {
+    modules.value = moduleResult.value.data.list;
+    modules.value.forEach((module) => {
+      moduleFilters[module.module_key] ??= "";
+    });
+  }
 }
+
+onMounted(() => {
+  // 首屏订单列表与筛选元数据独立；筛选接口慢/失败时仍可看到账本。
+  void loadData();
+  void loadFilterOptions();
+});
 
 async function loadData() {
   loading.value = true;
