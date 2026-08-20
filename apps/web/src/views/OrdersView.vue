@@ -190,6 +190,7 @@
         <el-table-column label="操作" width="130" fixed="right" align="center">
           <template #default="{ row }">
             <div class="flex justify-center gap-2">
+              <el-button link size="small" style="color: #1f1f1f" @click="handleOpenDetail(row)">详情</el-button>
               <el-button link size="small" type="primary" @click="handleOpenDetail(row)">编辑</el-button>
             </div>
           </template>
