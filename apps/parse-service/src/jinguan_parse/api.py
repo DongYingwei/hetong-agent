@@ -796,6 +796,9 @@ def _read_draft(conn, draft_id: int) -> dict | None:
     if row is None:
         return None
     data = dict(zip(cols, row))
+    # DRAFT-* 仅是草稿内部唯一键，绝不作为页面上的合同号候选。
+    if str(data.get("contract_no") or "").startswith("DRAFT-"):
+        data["contract_no"] = ""
     # 日期/数值转成前端友好的字符串；原文只给预览（全文太大）。
     for k in ("sign_date", "start_date", "end_date"):
         if data.get(k) is not None:

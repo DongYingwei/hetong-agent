@@ -89,8 +89,8 @@ def confirm_draft(
                 data[k] = v
 
         contract_no = str(data.get("contract_no") or "").strip()
-        if not contract_no:
-            raise ValueError("合同号不能为空")
+        if not contract_no or contract_no.startswith("DRAFT-"):
+            raise ValueError("请在人工核对页填写真实合同号")
         if len(contract_no) > 128:
             raise ValueError("合同号不能超过 128 个字符，请填写合同编号而非完整文件名")
         data["contract_no"] = contract_no
