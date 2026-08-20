@@ -3,7 +3,7 @@
     <template #header>
       <div class="flex items-center justify-between pr-6">
         <span>订单详情</span>
-        <div>
+        <div v-if="editing">
           <el-button link @click="visible = false">取消</el-button>
           <el-button type="primary" link :loading="saving" @click="saveEdit">保存</el-button>
         </div>
@@ -11,7 +11,7 @@
     </template>
 
     <div v-if="order" class="space-y-4 overflow-y-auto max-h-[70vh] pr-2">
-      <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
+      <div v-if="editing" class="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <p class="mb-3 text-xs text-gray-500">保存后，列表、综合检索、统计与导出均以修改后的订单数据为准。</p>
         <el-collapse v-model="editingSections">
           <el-collapse-item v-for="section in editableSections" :key="section.name" :name="section.name" :title="section.name">
@@ -30,13 +30,26 @@
         </el-collapse>
       </div>
 
+      <div v-else class="rounded-lg border border-gray-200 bg-white p-4">
+        <el-collapse v-model="viewingSections">
+          <el-collapse-item v-for="section in editableSections" :key="section.name" :name="section.name" :title="section.name">
+            <dl class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 px-1">
+              <div v-for="field in section.fields" :key="field.key">
+                <dt class="text-xs text-gray-400">{{ field.label }}</dt>
+                <dd class="mt-1 text-sm text-[#1A1A1A] break-words">{{ formatReadonly(field, order) }}</dd>
+              </div>
+            </dl>
+          </el-collapse-item>
+        </el-collapse>
+      </div>
+
       <div class="rounded-lg border border-gray-200 bg-gray-50 p-4">
         <div class="mb-3 text-sm font-medium text-[#303133]">AI关键词解析结果</div>
         <div class="grid grid-cols-2 gap-2">
           <div v-for="module in aiModules" :key="module.key" class="rounded-lg border border-gray-200 bg-white p-3">
             <div class="mb-1 text-sm font-medium text-[#1A1A1A]">{{ module.name }}</div>
             <div class="mb-2 text-xs text-gray-400">{{ module.description }}</div>
-            <div class="flex flex-wrap items-center gap-1.5">
+            <div v-if="editing" class="flex flex-wrap items-center gap-1.5">
               <span v-for="keyword in (editModuleKeywords[module.key] || [])" :key="keyword" class="tag tag-green inline-flex items-center gap-1" style="font-size: 11px">
                 {{ keyword }}
                 <el-icon class="cursor-pointer hover:text-red-500" @click="removeModuleKeyword(module.key, keyword)"><Close /></el-icon>
@@ -45,10 +58,17 @@
                 <el-option v-for="item in availableKeywords" :key="item.id" :label="item.keyword_name" :value="item.keyword_name" :disabled="(editModuleKeywords[module.key] || []).includes(item.keyword_name)" />
               </el-select>
             </div>
+            <div v-else class="flex flex-wrap gap-1.5">
+              <span v-for="keyword in readonlyModuleKeywords(module.key)" :key="keyword" class="tag tag-green" style="font-size: 11px">{{ keyword }}</span>
+              <span v-if="!readonlyModuleKeywords(module.key).length" class="text-sm text-gray-400">—</span>
+            </div>
           </div>
         </div>
       </div>
     </div>
+    <template v-if="!editing" #footer>
+      <div class="flex justify-end"><el-button @click="visible = false">关闭</el-button></div>
+    </template>
   </el-dialog>
 </template>
 
@@ -59,9 +79,10 @@ import { keywordApi, orderApi } from '../../api';
 import { ElMessage } from 'element-plus';
 import { Close } from '@element-plus/icons-vue';
 
-const props = defineProps<{ modelValue: boolean; order: OrderLedger | null }>();
+const props = defineProps<{ modelValue: boolean; order: OrderLedger | null; startEditing?: boolean }>();
 const emit = defineEmits(['update:modelValue', 'updated']);
 const visible = ref(false);
+const editing = ref(false);
 const saving = ref(false);
 type FieldKind = 'text' | 'date' | 'number' | 'income';
 type EditableField = { key: string; label: string; kind?: FieldKind; precision?: number };
@@ -102,6 +123,7 @@ const editableSections: Array<{ name: string; fields: EditableField[] }> = [
 ];
 const numericFields = editableSections.flatMap((section) => section.fields).filter((field) => field.kind === 'number');
 const editingSections = ref(editableSections.map((section) => section.name));
+const viewingSections = ref(editableSections.map((section) => section.name));
 const editForm = reactive<Record<string, unknown>>({});
 type ManagedKeyword = { id: number; keyword_name: string };
 const availableKeywords = ref<ManagedKeyword[]>([]);
@@ -114,7 +136,17 @@ const aiModules = [
   { key: 'staff', name: '人员需求', description: '含（人员资质、人员技术要求、人员技能要求、岗位需求、岗位说明、岗位要求）' },
 ];
 
-watch(() => props.modelValue, (value) => { visible.value = value; if (value) beginEdit(); });
+watch(() => props.modelValue, (value) => {
+  visible.value = value;
+  editing.value = !!props.startEditing;
+  if (value && editing.value) beginEdit();
+  if (value) viewingSections.value = editableSections.map((section) => section.name);
+});
+watch(() => props.startEditing, (value) => {
+  if (!visible.value) return;
+  editing.value = !!value;
+  if (editing.value) beginEdit();
+});
 watch(visible, (value) => emit('update:modelValue', value));
 
 function beginEdit() {
@@ -178,6 +210,17 @@ function formatTaxRate(value: unknown): string | null {
 function editableModuleKeywords(key: string): string[] {
   const raw = props.order?.module_hits?.find((item) => item.module_key === key)?.keywords;
   return raw ? raw.split(',').filter(Boolean) : [];
+}
+function readonlyModuleKeywords(key: string): string[] {
+  return editableModuleKeywords(key);
+}
+function formatReadonly(field: EditableField, order: OrderLedger): string {
+  const value = (order as unknown as Record<string, unknown>)[field.key];
+  if (value === null || value === undefined || value === '') return '—';
+  if (field.kind === 'date') return String(value).slice(0, 10);
+  if (field.key === 'tax_rate' || field.key === 'detail_tax_rate') return `${formatTaxRate(value) ?? '—'}%`;
+  if (field.kind === 'income') return Number(value) === 1 ? '已确认' : '未确认';
+  return String(value);
 }
 </script>
 

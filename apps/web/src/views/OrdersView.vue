@@ -191,7 +191,7 @@
           <template #default="{ row }">
             <div class="flex justify-center gap-2">
               <el-button link size="small" style="color: #1f1f1f" @click="handleOpenDetail(row)">详情</el-button>
-              <el-button link size="small" type="primary" @click="handleOpenDetail(row)">编辑</el-button>
+              <el-button link size="small" type="primary" @click="handleEdit(row)">编辑</el-button>
             </div>
           </template>
         </el-table-column>
@@ -223,6 +223,7 @@
     <OrderDetailModal
       v-model="showDetailModal"
       :order="currentOrder"
+      :start-editing="detailStartEditing"
       @updated="loadData"
     />
   </div>
@@ -244,6 +245,7 @@ import { exportFullOrderLedgerExcel } from "../utils/excelExporter";
 const loading = ref(false);
 const showDetailModal = ref(false);
 const currentOrder = ref<OrderLedger | null>(null);
+const detailStartEditing = ref(false);
 
 const tableData = ref<OrderLedger[]>([]);
 const modules = ref<ContractModule[]>([]);
@@ -316,6 +318,12 @@ function handleReset() {
 }
 
 function handleOpenDetail(row: OrderLedger) {
+  detailStartEditing.value = false;
+  currentOrder.value = row;
+  showDetailModal.value = true;
+}
+function handleEdit(row: OrderLedger) {
+  detailStartEditing.value = true;
   currentOrder.value = row;
   showDetailModal.value = true;
 }
