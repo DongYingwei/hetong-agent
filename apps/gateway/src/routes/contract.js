@@ -57,6 +57,9 @@ async function listUnconfirmedParseJobs() {
     JOIN contract_packages cp ON cp.id=j.package_id
     LEFT JOIN contracts_draft d ON d.id=j.draft_id
     WHERE j.status IN ('queued','running','succeeded','failed')
+      -- 人工核对后 contract_packages 已关联正式合同；此时只应展示正式台账行，
+      -- 不能继续把历史解析任务混入列表造成同一合同重复。
+      AND cp.contract_id IS NULL
     ORDER BY j.created_at DESC`);
   return rows.map((job) => ({
     id: -Number(job.id),
