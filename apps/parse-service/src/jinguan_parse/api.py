@@ -989,7 +989,7 @@ def build_default_app() -> FastAPI:
 
 def _read_draft(conn, draft_id: int) -> dict | None:
     """读草稿一行 → dict（表单字段 + 模块命中 + 原文预览）。不存在返回 None。"""
-    cols = _DRAFT_FORM_COLS + ["module_hits", "mineru_md"]
+    cols = _DRAFT_FORM_COLS + ["suggested_contract_no", "module_hits", "mineru_md"]
     with conn.cursor() as cur:
         cur.execute(f"SELECT {', '.join(cols)} FROM contracts_draft WHERE id = %s", (draft_id,))
         row = cur.fetchone()
@@ -998,7 +998,7 @@ def _read_draft(conn, draft_id: int) -> dict | None:
     data = dict(zip(cols, row))
     # DRAFT-* 仅是草稿内部唯一键，绝不作为页面上的合同号候选。
     if str(data.get("contract_no") or "").startswith("DRAFT-"):
-        data["contract_no"] = ""
+        data["contract_no"] = data.get("suggested_contract_no") or ""
     # 日期/数值转成前端友好的字符串；原文只给预览（全文太大）。
     for k in ("sign_date", "start_date", "end_date"):
         if data.get(k) is not None:

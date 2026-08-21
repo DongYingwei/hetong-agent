@@ -22,6 +22,7 @@ _ROOT = pathlib.Path(__file__).resolve().parents[3]
 _DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "001_contracts.sql"
 _DDL2 = _ROOT / "packages" / "contracts-db" / "migrations" / "002_contract_md_sync.sql"
 _PACKAGES_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "003_contract_packages.sql"
+_CONTRACT_NO_SUGGESTION_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "009_contract_number_suggestions.sql"
 _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -71,6 +72,7 @@ def pg_conn():
             cur.execute(_DDL2.read_text(encoding="utf-8"))
             cur.execute(_PACKAGES_DDL.read_text(encoding="utf-8"))
             cur.execute(_SEED.read_text(encoding="utf-8"))
+            cur.execute(_CONTRACT_NO_SUGGESTION_DDL.read_text(encoding="utf-8"))
         conn.commit()
         yield conn
         conn.close()
@@ -141,6 +143,19 @@ def test_confirm_applies_overrides(pg_conn):
         name, line = cur.fetchone()
     assert name == "智慧工地OneNET框架采购合同"      # override 生效
     assert line == "ISC"
+
+
+def test_confirm_uses_filename_suggestion_when_draft_key_is_internal(pg_conn):
+    ext = ContractExtraction(summary=SummaryFields(contract_name="测试合同"), amount=AmountFields(), commercial=CommercialFields())
+    draft = extract_one_contract("x.pdf", FakeMineruClient("# 合同"), FakeExtractClient(ext), [], KeywordMatcher({}))
+    draft_id = insert_draft(
+        pg_conn, contract_no="DRAFT-internal", draft=draft, source_sha256="suggested-sha",
+        suggested_contract_no="HSKJ/C-QC-2026015",
+    )
+    cid = confirm_draft(pg_conn, draft_id, confirmed_by="张三")
+    with pg_conn.cursor() as cur:
+        cur.execute("SELECT contract_no FROM contracts WHERE id=%s", (cid,))
+        assert cur.fetchone()[0] == "HSKJ/C-QC-2026015"
 
 
 def test_confirm_keeps_uploaded_source_package(pg_conn):

@@ -73,7 +73,7 @@ def confirm_draft(
 
     with conn.cursor() as cur:
         # ① 读草稿全行（按列名取）；mineru_md 搬运至正式库供切片3 同步比对/重建
-        all_cols = _COPY_COLS + _AI_RAW_COLS + ["module_hits", "mineru_md"]
+        all_cols = _COPY_COLS + _AI_RAW_COLS + ["suggested_contract_no", "module_hits", "mineru_md"]
         cur.execute(
             f"SELECT {', '.join(all_cols)} FROM contracts_draft WHERE id = %s",
             (draft_id,),
@@ -87,6 +87,10 @@ def confirm_draft(
         for k, v in overrides.items():
             if k in data:
                 data[k] = v
+
+        # 上传文件名得出的建议编号可直接作为核对默认值；人工 overrides 优先。
+        if str(data.get("contract_no") or "").startswith("DRAFT-"):
+            data["contract_no"] = data.get("suggested_contract_no") or ""
 
         contract_no = str(data.get("contract_no") or "").strip()
         if not contract_no or contract_no.startswith("DRAFT-"):

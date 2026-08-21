@@ -71,7 +71,8 @@ def normalize_amount(value: str | None) -> Decimal | None:
 
 
 def insert_draft(conn: Connection, contract_no: str, draft: DraftContract,
-                 source_sha256: str | None = None) -> int:
+                 source_sha256: str | None = None,
+                 suggested_contract_no: str | None = None) -> int:
     """把 DraftContract 写进 contracts_draft，返回新行 id。
 
     - 标量 AI 值中，能安全规整的 DATE/DECIMAL 写入主列；原文始终保留在
@@ -102,6 +103,9 @@ def insert_draft(conn: Connection, contract_no: str, draft: DraftContract,
     if source_sha256 is not None:
         cols.append("source_sha256")
         vals.append(source_sha256)
+    if suggested_contract_no is not None:
+        cols.append("suggested_contract_no")
+        vals.append(suggested_contract_no)
 
     placeholders = ", ".join(["%s"] * len(vals))
     col_sql = ", ".join(cols)

@@ -20,6 +20,7 @@ from typing import Callable
 from psycopg import Connection
 
 from .clients import ExtractClient, MineruClient
+from .contract_number import suggest_contract_no
 from .extract import ModuleConfig, extract_one_contract, extract_markdown
 from .keywords import KeywordMatcher
 from .persist import insert_draft
@@ -95,7 +96,10 @@ def ingest_one(conn: Connection, path: str, deps: IngestDeps, force: bool = Fals
             contract_no = deps.contract_no_of(draft, path)
         else:
             contract_no = default_contract_no(path)
-        draft_id = insert_draft(conn, contract_no=contract_no, draft=draft, source_sha256=sha)
+        draft_id = insert_draft(
+            conn, contract_no=contract_no, draft=draft, source_sha256=sha,
+            suggested_contract_no=suggest_contract_no(path),
+        )
         return IngestResult(path, "ingested", draft_id=draft_id)
     except Exception as e:  # §8：单份失败不阻断整批
         return IngestResult(path, "failed", error=f"{type(e).__name__}: {e}")

@@ -26,6 +26,7 @@ _KEYWORD_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "004_configu
 _FULLTEXT_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "005_fulltext_keyword_index.sql"
 _MODULE_SCOPE_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "006_manual_review_and_module_scope.sql"
 _ASYNC_PARSE_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "007_async_contract_parse_jobs.sql"
+_CONTRACT_NO_SUGGESTION_DDL = _ROOT / "packages" / "contracts-db" / "migrations" / "009_contract_number_suggestions.sql"
 _SEED = _ROOT / "packages" / "contracts-db" / "seeds" / "001_dict.sql"
 
 from jinguan_parse import (  # noqa: E402
@@ -77,6 +78,7 @@ def pg():
             cur.execute(_FULLTEXT_DDL.read_text(encoding="utf-8"))
             cur.execute(_MODULE_SCOPE_DDL.read_text(encoding="utf-8"))
             cur.execute(_ASYNC_PARSE_DDL.read_text(encoding="utf-8"))
+            cur.execute(_CONTRACT_NO_SUGGESTION_DDL.read_text(encoding="utf-8"))
         conn.commit()
         yield conn, dsn
         conn.close()
