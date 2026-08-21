@@ -1,6 +1,6 @@
 # epms-sync — EPMS 订单增量同步
 
-从 EPMS 系统增量拉取订单附件，解析为 Markdown 并按订单编号分目录，再做 AI 关键词判定。当前定时任务只更新源文件、Markdown 和 AI 初筛结果，**不会自动回写订单台账数据库**。
+从 EPMS 系统增量拉取订单附件，解析为 Markdown 并按订单编号分目录，再做 AI 关键词判定，随后按订单编号增量写入订单台账。
 生产服务器每天凌晨 02:30 由 `jingxiaoguan-epms-sync.timer` 自动执行，用 checkpoint 记录已统计到的「审核日期」，避免全量重拉。本地可按需手动运行或使用遗留 cron 文件。
 
 ## 流程
@@ -11,6 +11,8 @@
   → 下载附件（按 uuid，跳过「附件=无」）
   → 解析 md（PDF→PyMuPDF / 图片→MinerU / eml→正文 / office→纯文本）
   → AI 关键词判定（数据库 ai_keyword_terms + jinguan_parse.keyword_scan）
+  → 增量 upsert 订单台账（保留人工字段覆盖）
+  → 本次 AI 订单四模块归类（保留人工关键词调整）
   → 更新 checkpoint
 ```
 
@@ -19,24 +21,29 @@
 - `data/md-epms/` 每订单一个子目录的 md + `manifest.json` + `ai_keyword_results.json`
 - `data/epms-sync-state.json` 增量 checkpoint
 
-## 当前自动同步范围（重要）
+## 自动同步范围与数据边界（重要）
 
-`run_daily.py` 的定时任务只完成“拉取 → 附件下载 → Markdown 解析 → AI 关键词初筛 → 推进 checkpoint”。它**不会**写入运营库 `contract_assistant.sys_order`、`order_module_hits` 或订单人工覆盖数据。
+`run_daily.py` 在下载、解析、AI 初筛完成后，会将本次审核时间范围内的订单按 `订单编号` 写入运营库 `contract_assistant.sys_order`：新订单插入，已有订单更新 EPMS 来源字段。
 
-因此，EPMS 有新订单或附件更新后，订单台账页面、综合检索和统计数据不会随定时任务自动变化；当前仍须在完成备份和人工确认后，手动执行订单台账导入及模块分析。
+页面编辑不会直接与 EPMS 来源混在一起：`order_sync_sources` 保存最新来源快照，`order_field_overrides` 保存人工变更字段。每日同步不会覆盖这些字段；用户将字段改回来源值时，对应覆盖会自动解除。人工维护的四模块关键词以 `manual` 标记保留，不会被自动模型归类覆盖。
 
-`import_order_ledger.py` 是全量重导脚本，会重建订单主表及关联的模块结果，不能直接接入定时任务，否则可能覆盖人工编辑或关键词人工调整。后续自动化改造应改为增量 upsert，并满足：
+`import_order_ledger.py` 仍是受控全量重导脚本，会重建订单主表及关联数据，不能接入定时任务。
 
-- 保留 `order_manual_overrides` 等人工维护数据；
-- 仅对新增或变更订单重新执行四模块分析；
-- 导入、模块分析均成功后才推进 checkpoint；任一步失败均保留原 checkpoint 并告警。
+首次启用增量同步前，必须用当前已审核全量 Excel 执行一次基线建立，识别旧版直接写入 `sys_order` 的人工修改：
+
+```bash
+python3 scripts/seed_order_sync_baseline.py \
+  --xlsx /data/jingxiaoguan/epms/EPMS/订单信息_2026年_审核时间全量补全.xlsx \
+  --ai-results /data/jingxiaoguan/epms/md-epms/ai_keyword_results.json
+```
 
 ## 配置
 
 ```bash
 cd apps/epms-sync
 cp .env.example .env
-# 填 EPMS_PASSWORD、PG_URL（contract_assistant 运营库）、必要时 MinerU 地址
+# 填 EPMS_PASSWORD、PG_URL（合同关键词库）、ORDER_PG_URL（订单运营库）；
+# systemd 已加载 gateway.env 时可由 DB_* 自动生成 ORDER_PG_URL。
 ```
 
 依赖（base 环境，Python 3.10）：

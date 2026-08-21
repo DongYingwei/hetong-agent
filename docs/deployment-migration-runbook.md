@@ -197,7 +197,7 @@ MARKDOWN_ROOT=/data/jingxiaoguan/contracts/md-file
 
 ### 6.2 订单全量刷新（已确认允许覆盖时）
 
-订单全量导入会在同一事务中清空并重建 `sys_order`、`order_module_hits`、`order_manual_overrides` 与 `contract_order_links`。因此导入前必须备份运营库，并明确告知用户：订单人工编辑和订单—合同关联会被清除；合同库、合同原文件和合同向量不受影响。
+订单全量导入会在同一事务中清空并重建 `sys_order`、`order_module_hits`、人工覆盖与 `contract_order_links`。因此导入前必须备份运营库，并明确告知用户：订单人工编辑和订单—合同关联会被清除；合同库、合同原文件和合同向量不受影响。
 
 推荐顺序：
 
@@ -217,6 +217,32 @@ docker exec -i jingxiaoguan-postgres \
 ```
 
 此后订单列表、详情、综合检索、统计和导出都以 `sys_order` 的最新值为准。全量 Excel 重导仍会覆盖订单主表，重导前需要按 6.2 备份。
+
+### 6.4 每日 EPMS 增量入库（首次启用）
+
+订单每日同步已改为按订单编号增量 upsert，不能再把全量重导脚本加入 timer。部署时先创建来源快照/字段覆盖表：
+
+```bash
+docker exec -i jingxiaoguan-postgres \
+  psql -U postgres -d contract_assistant -v ON_ERROR_STOP=1 \
+  < /opt/jingxiaoguan/current/apps/gateway/scripts/migrations/016_order_incremental_sync.sql
+```
+
+随后以当前已审核的全量 Excel 建立一次基线。该操作会记录 EPMS 来源快照，并把当前 `sys_order` 与来源不同的字段标记为人工覆盖；它不修改页面读模型：
+
+```bash
+set -a
+source /opt/jingxiaoguan/shared/env/gateway.env
+source /opt/jingxiaoguan/shared/env/epms-sync.env
+set +a
+
+/home/ubuntu/miniconda3/envs/jingxiaoguan/bin/python \
+  /opt/jingxiaoguan/current/apps/epms-sync/scripts/seed_order_sync_baseline.py \
+  --xlsx '/data/jingxiaoguan/epms/EPMS/订单信息_2026年_审核时间全量补全.xlsx' \
+  --ai-results '/data/jingxiaoguan/epms/md-epms/ai_keyword_results.json'
+```
+
+确认 `jingxiaoguan-epms-sync.timer` 已启用。此后每日 02:30 在附件解析、关键词初筛完成后，自动写入新增/变更订单，并对本次 AI 订单执行四模块归类；任一步失败不会推进 checkpoint，下一次定时会重试。
 
 ## 7. 当前验收前事项
 

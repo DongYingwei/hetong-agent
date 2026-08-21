@@ -17,13 +17,13 @@
           <el-collapse-item v-for="section in editableSections" :key="section.name" :name="section.name" :title="section.name">
             <el-form label-width="118px" class="grid grid-cols-1 md:grid-cols-2 gap-x-4">
               <el-form-item v-for="field in section.fields" :key="field.key" :label="field.label">
-                <el-date-picker v-if="field.kind === 'date'" v-model="editForm[field.key]" type="date" value-format="YYYY-MM-DD" class="w-full" clearable />
-                <el-input v-else-if="field.kind === 'number'" v-model="editForm[field.key]" inputmode="decimal" clearable />
-                <el-select v-else-if="field.kind === 'income'" v-model="editForm[field.key]" class="w-full">
+                <el-date-picker v-if="field.kind === 'date'" v-model="editForm[field.key]" type="date" value-format="YYYY-MM-DD" class="w-full" clearable :disabled="field.readonly" />
+                <el-input v-else-if="field.kind === 'number'" v-model="editForm[field.key]" inputmode="decimal" clearable :disabled="field.readonly" />
+                <el-select v-else-if="field.kind === 'income'" v-model="editForm[field.key]" class="w-full" :disabled="field.readonly">
                   <el-option label="未确认" :value="0" />
                   <el-option label="已确认" :value="1" />
                 </el-select>
-                <el-input v-else v-model="editForm[field.key]" clearable />
+                <el-input v-else v-model="editForm[field.key]" clearable :disabled="field.readonly" />
               </el-form-item>
             </el-form>
           </el-collapse-item>
@@ -85,10 +85,10 @@ const visible = ref(false);
 const editing = ref(false);
 const saving = ref(false);
 type FieldKind = 'text' | 'date' | 'number' | 'income';
-type EditableField = { key: string; label: string; kind?: FieldKind; precision?: number };
+type EditableField = { key: string; label: string; kind?: FieldKind; precision?: number; readonly?: boolean };
 const editableSections: Array<{ name: string; fields: EditableField[] }> = [
   { name: '基本信息', fields: [
-    { key: 'project_no', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'detail_project_no', label: '明细项目编号' }, { key: 'order_no', label: '订单编号' },
+    { key: 'project_no', label: '项目编号' }, { key: 'project_name', label: '项目名称' }, { key: 'detail_project_no', label: '明细项目编号' }, { key: 'order_no', label: '订单编号', readonly: true },
     { key: 'customer_order_no', label: '客方订单号' }, { key: 'order_name', label: '订单名称' }, { key: 'contract_no', label: '合同编号' }, { key: 'customer_name', label: '客户名称' },
     { key: 'assessment_line', label: '考核线' }, { key: 'customer_line', label: '客户线' }, { key: 'customer_type', label: '客户类型' }, { key: 'settlement_type', label: '结算方式' },
     { key: 'order_type', label: '订单类型' }, { key: 'order_attr', label: '订单属性' }, { key: 'salesperson', label: '业务员' },
@@ -125,6 +125,7 @@ const numericFields = editableSections.flatMap((section) => section.fields).filt
 const editingSections = ref(editableSections.map((section) => section.name));
 const viewingSections = ref(editableSections.map((section) => section.name));
 const editForm = reactive<Record<string, unknown>>({});
+const originalEditForm = ref<Record<string, unknown>>({});
 type ManagedKeyword = { id: number; keyword_name: string };
 const availableKeywords = ref<ManagedKeyword[]>([]);
 const editModuleKeywords = reactive<Record<string, string[]>>({ role: [], service: [], tech: [], staff: [] });
@@ -152,10 +153,13 @@ watch(visible, (value) => emit('update:modelValue', value));
 function beginEdit() {
   if (!props.order) return;
   for (const key of Object.keys(editForm)) delete editForm[key];
+  originalEditForm.value = {};
   for (const field of editableSections.flatMap((section) => section.fields)) {
     const value = (props.order as unknown as Record<string, unknown>)[field.key];
-    editForm[field.key] = field.kind === 'date' && value ? String(value).slice(0, 10)
+    const normalized = field.kind === 'date' && value ? String(value).slice(0, 10)
       : field.key === 'tax_rate' || field.key === 'detail_tax_rate' ? (formatTaxRate(value) ?? '') : (value ?? null);
+    editForm[field.key] = normalized;
+    originalEditForm.value[field.key] = normalized;
   }
   for (const module of aiModules) {
     editModuleKeywords[module.key] = editableModuleKeywords(module.key);
@@ -171,7 +175,10 @@ async function saveEdit() {
   if (!props.order) return;
   saving.value = true;
   try {
-    const payload: Record<string, unknown> = Object.fromEntries(Object.entries(editForm).map(([key, value]) => [key, typeof value === 'string' && value.trim() === '' ? null : value]));
+    const normalized = Object.fromEntries(Object.entries(editForm)
+      .map(([key, value]): [string, unknown] => [key, typeof value === 'string' && value.trim() === '' ? null : value]));
+    const payload: Record<string, unknown> = Object.fromEntries(Object.entries(normalized)
+      .filter(([key, value]) => !sameFormValue(value, originalEditForm.value[key])));
     for (const field of numericFields) {
       const value = payload[field.key];
       if (value === null || value === undefined) continue;
@@ -180,8 +187,10 @@ async function saveEdit() {
       if (field.precision === 0 && !Number.isInteger(numberValue)) throw new Error(`${field.label}必须为整数`);
       payload[field.key] = field.precision === 4 ? numberValue.toFixed(4) : numberValue;
     }
-    const result = await orderApi.update(props.order.id, payload as Partial<OrderLedger>);
-    if (result.code !== 200) throw new Error(result.msg);
+    if (Object.keys(payload).length) {
+      const result = await orderApi.update(props.order.id, payload as Partial<OrderLedger>);
+      if (result.code !== 200) throw new Error(result.msg);
+    }
     const moduleHits = aiModules.map((module) => ({ module_key: module.key, keywords: editModuleKeywords[module.key] || [] }));
     const hitResult = await orderApi.updateModuleHits(props.order.id, moduleHits);
     if (hitResult.code !== 200) throw new Error(hitResult.msg);
@@ -201,6 +210,10 @@ function addModuleKeyword(moduleKey: string) {
   moduleKeywordSelection[moduleKey] = '';
   const keywords = editModuleKeywords[moduleKey] || [];
   if (keyword && !keywords.includes(keyword)) keywords.push(keyword);
+}
+function sameFormValue(left: unknown, right: unknown) {
+  const normalize = (value: unknown) => value === null || value === undefined || value === '' ? null : String(value).trim();
+  return normalize(left) === normalize(right);
 }
 function formatTaxRate(value: unknown): string | null {
   if (value === null || value === undefined || value === '') return null;

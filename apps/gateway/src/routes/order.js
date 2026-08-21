@@ -56,12 +56,20 @@ async function enabledKeywordNames() {
   return new Set((data.list || []).filter((item) => Number(item.status) === 1).map((item) => String(item.keyword_name)));
 }
 
-/** 人工编辑直接更新订单台账。后续查询、统计、导出均以修改后的 sys_order 为准。 */
+function comparableSourceValue(value) {
+  if (value === null || value === undefined || value === '') return null;
+  return String(value).trim();
+}
+
+/**
+ * 人工编辑写入 sys_order，同时记录字段级覆盖意图。
+ * 每日 EPMS 同步只更新没有覆盖记录的字段；用户填回来源值时会自动取消覆盖。
+ */
 router.put('/detail/:id', async (ctx) => {
   const id = Number(ctx.params.id);
-  // 允许修改全部台账业务字段；主键和 EPMS 内部来源标识不允许改写。
+  // 订单编号是增量同步的业务键，不能在页面改写；主键和 EPMS 内部来源标识同样不可编辑。
   const allowed = new Set([
-    'order_no', 'project_no', 'project_name', 'detail_project_no', 'customer_order_no', 'order_name', 'contract_no',
+    'project_no', 'project_name', 'detail_project_no', 'customer_order_no', 'order_name', 'contract_no',
     'customer_name', 'assessment_line', 'customer_line', 'customer_type', 'settlement_type', 'order_type', 'order_attr',
     'salesperson', 'customer_contract_no', 'customer_service_target', 'customer_pm', 'customer_order_name',
     'created_date', 'accepted_date', 'start_date', 'end_date', 'est_invoice_date', 'order_status', 'tax_rate', 'amount',
@@ -81,7 +89,23 @@ router.put('/detail/:id', async (ctx) => {
   const assignments = fields.map((field, index) => `${field}=$${index + 1}`);
   await query(`UPDATE sys_order SET ${assignments.join(', ')}, updated_at=now() WHERE id=$${fields.length + 1}`,
     [...fields.map((field) => values[field]), id]);
-  // 旧版本曾写入 JSON 覆盖层；当前编辑后清理本订单旧覆盖，避免再次遮住真实台账值。
+  const sourceRows = await query('SELECT source_values FROM order_sync_sources WHERE order_id=?', [id]);
+  const sourceValues = sourceRows[0]?.source_values || {};
+  const username = ctx.state.user?.username || 'web-order-edit';
+  for (const field of fields) {
+    const sourceValue = sourceValues[field];
+    if (Object.prototype.hasOwnProperty.call(sourceValues, field)
+      && comparableSourceValue(values[field]) === comparableSourceValue(sourceValue)) {
+      await query('DELETE FROM order_field_overrides WHERE order_id=? AND field_name=?', [id, field]);
+    } else {
+      await query(`INSERT INTO order_field_overrides(order_id,field_name,manual_value,updated_by)
+        VALUES ($1,$2,$3::jsonb,$4)
+        ON CONFLICT(order_id,field_name) DO UPDATE SET manual_value=EXCLUDED.manual_value,
+          updated_by=EXCLUDED.updated_by,updated_at=now()`,
+      [id, field, JSON.stringify(values[field]), username]);
+    }
+  }
+  // 旧覆盖层已退役；仅清理历史残留，不参与任何新同步逻辑。
   await query('DELETE FROM order_manual_overrides WHERE order_id=?', [id]);
   ctx.success({ id, values }, '订单修改已保存');
 });
