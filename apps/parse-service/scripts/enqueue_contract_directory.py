@@ -82,14 +82,18 @@ def candidates(root: Path):
         if path.name.startswith("合同抽取清单_") or path.name.startswith("批量入队结果_"):
             continue
         if path.is_file():
-            if path.suffix.lower() in SUPPORTED_SUFFIXES:
+            if path.suffix.lower() == ".pdf":
                 yield path, [path], None
+            elif path.suffix.lower() in SUPPORTED_SUFFIXES:
+                yield path, [], "当前解析链路要求每份合同至少包含一个 PDF；Word 仅可作为 PDF 合同包附件"
             else:
                 yield path, [], f"不支持的根目录文件类型：{path.suffix or '无扩展名'}"
             continue
         files = eligible_files(path)
         if not files:
             yield path, [], "合同包内没有 PDF、DOC 或 DOCX"
+        elif not any(file.suffix.lower() == ".pdf" for file in files):
+            yield path, files, "当前解析链路要求每份合同至少包含一个 PDF；Word 仅可作为 PDF 合同包附件"
         elif len(files) > MAX_PACKAGE_FILES:
             yield path, files, f"合同包包含 {len(files)} 个可解析文件，超过 {MAX_PACKAGE_FILES} 个限制"
         elif sum(file.stat().st_size for file in files) > MAX_PACKAGE_BYTES:
