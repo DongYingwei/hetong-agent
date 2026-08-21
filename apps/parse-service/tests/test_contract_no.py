@@ -11,11 +11,11 @@ def test_suggest_contract_no_adds_hskj_prefix_for_regular_code():
     assert suggest_contract_no("QC-2026015_某项目合同.pdf") == "HSKJ/C-QC-2026015"
 
 
-def test_suggest_contract_no_keeps_special_entity_prefixes():
-    assert suggest_contract_no("ZCKJ-CM-2026001.pdf") == "ZCKJ-CM-2026001"
-    assert suggest_contract_no("RQKJ-RJ-2026001.pdf") == "RQKJ-RJ-2026001"
-    assert suggest_contract_no("HSSL-QT-2026001.pdf") == "HSSL-QT-2026001"
-    assert suggest_contract_no("JZX-QC-2026001.pdf") == "JZX-QC-2026001"
+def test_suggest_contract_no_normalizes_special_entity_prefixes():
+    assert suggest_contract_no("ZCKJ-CM-2026001.pdf") == "ZCKJ/C-CM-2026001"
+    assert suggest_contract_no("RQKJ-RJ-2026001.pdf") == "RQKJ/C-RJ-2026001"
+    assert suggest_contract_no("HSSL-QT-2026001.pdf") == "HSSL/C-QT-2026001"
+    assert suggest_contract_no("JZX-QC-2026001.pdf") == "JZX/C-QC-2026001"
 
 
 def test_suggest_contract_no_normalizes_hsslc_and_upload_hash():

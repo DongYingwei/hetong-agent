@@ -14,14 +14,14 @@ _UPLOAD_HASH_SUFFIX = re.compile(r"--[0-9a-f]{12,}$", re.IGNORECASE)
 _LEADING_CONTRACT_CODE = re.compile(
     r"^\s*((?:[A-Za-z]+(?:/[A-Za-z]+)?-)?[A-Za-z]+-\d{4,}(?:-\d+)?)"
 )
-_NO_HSKJ_PREFIX = ("ZCKJ-", "RQKJ-", "HSSL-", "HSSL/C-", "JZX-")
+_ENTITY_PREFIXES = ("ZCKJ", "RQKJ", "HSSL", "JZX")
 
 
 def suggest_contract_no(source_name: str) -> str | None:
     """从文件/合同包名称的开头提取编码并规范化，无法识别时返回 ``None``。
 
-    普通编码补 ``HSKJ/C-``；ZCKJ、RQKJ、HSSL、JZX 保留原主体前缀；历史
-    ``HSSLC-`` 编码规范化为 ``HSSL/C-``。
+    普通编码补 ``HSKJ/C-``；ZCKJ、RQKJ、HSSL、JZX 使用各自的 ``<主体>/C-``
+    前缀；历史 ``HSSLC-`` 编码规范化为 ``HSSL/C-``。
     """
     stem = _UPLOAD_HASH_SUFFIX.sub("", Path(source_name).stem).upper()
     match = _LEADING_CONTRACT_CODE.match(stem)
@@ -30,6 +30,11 @@ def suggest_contract_no(source_name: str) -> str | None:
     code = match.group(1)
     if code.startswith("HSSLC-"):
         return f"HSSL/C-{code[len('HSSLC-'):]}"
-    if code.startswith("HSKJ/C-") or code.startswith(_NO_HSKJ_PREFIX):
+    if code.startswith("HSKJ/C-"):
         return code
+    for entity in _ENTITY_PREFIXES:
+        if code.startswith(f"{entity}/C-"):
+            return code
+        if code.startswith(f"{entity}-"):
+            return f"{entity}/C-{code[len(entity) + 1:]}"
     return f"HSKJ/C-{code}"
